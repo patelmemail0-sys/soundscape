@@ -185,11 +185,30 @@ def test_create_aggregate_description_and_cleanup():
     agg = core.create_aggregate("soundscape", "Soundscape", [(UID_A, False), (UID_B, True)], master_uid=UID_A)
     desc = hal.aggregates[agg]["desc"]
     assert desc["uid"] == "com.soundscape.soundscape" and desc["master"] == UID_A and desc["private"] == 0
+    assert desc["stacked"] == 0  # default stays unstacked for callers that map channels themselves
     assert desc["subdevices"] == [{"uid": UID_A, "drift": 0}, {"uid": UID_B, "drift": 1}]
     assert [d.uid for d in core.soundscape_aggregates()] == ["com.soundscape.soundscape"]
     assert core.aggregate_subdevices(agg) == [core.device_by_uid(UID_A).id, core.device_by_uid(UID_B).id]
     core.destroy_aggregate(agg)
     assert core.soundscape_aggregates() == [] and hal.destroyed == [agg]
+
+
+def test_sample_rate_alignment():
+    hal = make_hal()
+    core = ca.CoreAudio(hal)
+    a, b = core.device_by_uid(UID_A), core.device_by_uid(UID_B)
+    ranges = lambda *pairs: b"".join(struct.pack("dd", lo, hi) for lo, hi in pairs)  # noqa: E731
+    hal.props[(a.id, ca.kAudioDevicePropertyAvailableNominalSampleRates, SCOPE_GLOBAL, 0)] = ranges((44100, 44100), (48000, 48000))
+    hal.props[(b.id, ca.kAudioDevicePropertyAvailableNominalSampleRates, SCOPE_GLOBAL, 0)] = ranges((44100, 44100))
+    hal.props[(a.id, ca.kAudioDevicePropertyNominalSampleRate, SCOPE_GLOBAL, 0)] = struct.pack("d", 48000.0)
+    hal.props[(b.id, ca.kAudioDevicePropertyNominalSampleRate, SCOPE_GLOBAL, 0)] = struct.pack("d", 44100.0)
+    assert core.available_sample_rates(b.id) == [(44100.0, 44100.0)]
+    assert core.supports_rate(a.id, 48000) and not core.supports_rate(b.id, 48000)
+    assert core.align_sample_rates([a.id, b.id]) == 44100.0  # 48k impossible for B -> 44.1k for both
+    assert core.device(a.id).sample_rate == 44100.0
+    hal.props[(b.id, ca.kAudioDevicePropertyAvailableNominalSampleRates, SCOPE_GLOBAL, 0)] = ranges((8000, 16000))
+    assert core.align_sample_rates([a.id, b.id]) is None
+    assert core.align_sample_rates([]) is None
 
 
 def test_fourcc_and_transport_table():
@@ -374,6 +393,8 @@ def test_aggregate_engine_up_down(runner, tmp_path, monkeypatch):
     assert state.engine == "aggregate" and state.sink_name == "com.soundscape.soundscape"
     agg = hal.aggregates[hal.id_for_uid(state.sink_name)]["desc"]
     assert agg["master"] == UID_A and agg["subdevices"][1] == {"uid": UID_B, "drift": 1}
+    assert agg["stacked"] == 1  # Multi-Output Device: stereo apps are heard on every speaker
+    assert any("aligned at 48000 Hz" in m for m in s.logs)
     assert hal.default_output == hal.id_for_uid(state.sink_name)
     st = s.status()
     assert st["up"] and st["engine"] == "aggregate" and st["platform"] == "mac"

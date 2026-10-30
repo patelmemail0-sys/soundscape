@@ -170,6 +170,13 @@ class Engine:
     def alive(self, state: EngineState) -> bool:
         return self.pulse.sink(state.sink_name) is not None
 
+    def mute_output(self, state: EngineState, address: str, muted: bool) -> None:
+        """Silence one speaker (used by calibration). Default: mute its sink in the sound server."""
+        out = state.output_for(address)
+        if out is None:
+            raise AudioError(f"{address} is not part of the running session")
+        self.pulse.set_mute(out.sink, muted)
+
     def missing(self, state: EngineState) -> List[str]:
         """What a healthy session would have but this one lacks (empty = healthy).
 

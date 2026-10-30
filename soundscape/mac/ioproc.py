@@ -43,6 +43,7 @@ class Output:
     streams: int = 1
     channels: int = 2
     frames_written: int = 0
+    muted: bool = False  # calibration solo: output silence while the delay line keeps running
 
 
 @dataclass
@@ -92,7 +93,16 @@ class Mixer:
             return bytes(-start) + bytes(self.history[0:end])
         return bytes(self.history[start:end])
 
+    def set_muted(self, uid: str, muted: bool) -> Output:
+        for out in self.outputs:
+            if out.uid == uid or out.position == uid:
+                out.muted = muted
+                return out
+        raise KeyError(uid)
+
     def render_output(self, out: Output, frames: int) -> bytes:
+        if out.muted:
+            return bytes(frames * out.channels * FLOAT)
         block = self.take(frames, out.delay_frames)
         if out.channels == self.in_channels and not self.stereo_split:
             return block
@@ -161,7 +171,7 @@ class Mixer:
                 "buffer_map": [o.position if o else None for o in self.buffer_map] if self.buffer_map is not None else None,
                 "outputs": [{"uid": o.uid, "position": o.position, "delay_ms": o.delay_ms,
                              "delay_frames": o.delay_frames, "channels": o.channels,
-                             "frames_written": o.frames_written} for o in self.outputs]}
+                             "frames_written": o.frames_written, "muted": o.muted} for o in self.outputs]}
 
 
 class ControlServer:
@@ -194,6 +204,13 @@ class ControlServer:
             except (KeyError, ValueError):
                 return "err unknown output or value"
             return f"ok {out.delay_ms:.3f} {out.delay_frames}"
+        if cmd == "mute" and len(parts) >= 3:
+            target, value = line.strip()[len(parts[0]):].strip().rsplit(None, 1)
+            try:
+                out = self.mixer.set_muted(target, value.lower() in ("1", "on", "true"))
+            except KeyError:
+                return "err unknown output"
+            return f"ok {'muted' if out.muted else 'unmuted'}"
         if cmd == "stereo" and len(parts) == 2:
             self.mixer.stereo_split = parts[1].lower() in ("on", "1", "true")
             return "ok"
@@ -311,6 +328,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         outputs.append(parse_output_spec(spec))
     master = outputs[0].uid
     subdevices = [(args.input, True)] + [(o.uid, o.uid != master) for o in outputs]
+    members = [d.id for d in (ca.device_by_uid(u) for u, _ in subdevices) if d is not None]
+    rate_chosen = ca.align_sample_rates(members)
+    print(f"RATE {rate_chosen}", flush=True)
     agg_id = ca.create_aggregate(args.uid, args.name, subdevices, master_uid=master, private=True)
     try:
         time.sleep(0.5)

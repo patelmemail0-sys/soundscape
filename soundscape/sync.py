@@ -91,7 +91,20 @@ class Calibrator:
         state = self.session.state()
         if not state or not self.session.engine(state).alive(state):
             raise AudioError("Soundscape is not up", "run `soundscape up` first")
+        self._state = state
         return state.sink_name
+
+    def _mute(self, speaker: Speaker, sink: str, muted: bool) -> None:
+        """Silence one speaker for a chirp: inside the relay when there is one (instant and
+        sample-accurate), otherwise through the sound server's mute on its sink."""
+        state = getattr(self, "_state", None)
+        if state is not None and state.output_for(speaker.address) is not None:
+            try:
+                self.session.engine(state).mute_output(state, speaker.address, muted)
+                return
+            except AudioError:
+                pass
+        self.pulse.set_mute(sink, muted)
 
     def _sink_of(self, sp: Speaker) -> str:
         sink = self.pulse.bluetooth_sink(sp.address)
@@ -135,8 +148,8 @@ class Calibrator:
                 result["error"] = exc
 
         def solo(index: int) -> None:
-            for i, name in enumerate(sinks):
-                self.pulse.set_mute(name, i != index)
+            for i, (sp, name) in enumerate(zip(speakers, sinks)):
+                self._mute(sp, name, i != index)
 
         thread = threading.Thread(target=recorder, daemon=True)
         thread.start()
@@ -157,8 +170,8 @@ class Calibrator:
             except subprocess.TimeoutExpired:
                 player.kill()
         finally:
-            for name in sinks:
-                self.pulse.set_mute(name, False)
+            for sp, name in zip(speakers, sinks):
+                self._mute(sp, name, False)
         thread.join(timeout=total + 10)
         if "error" in result:
             raise result["error"]

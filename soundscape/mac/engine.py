@@ -61,7 +61,14 @@ class AggregateEngine(Engine):
         self._cleanup(uid)
         master = bound[0].sink.name
         subdevices = [(b.sink.name, b.sink.name != master) for b in bound]
-        agg_id = self.audio.ca.create_aggregate(uid, cfg.description, subdevices, master_uid=master, private=False)
+        rate = self.audio.ca.align_sample_rates([b.sink.index for b in bound])
+        if rate:
+            self.log(f"speakers aligned at {int(rate)} Hz")
+        else:
+            self.log("warning: the speakers share no common sample rate; one of them may stay silent")
+        # stacked = Multi-Output Device: every speaker gets the same stereo signal
+        agg_id = self.audio.ca.create_aggregate(uid, cfg.description, subdevices, master_uid=master, private=False,
+                                                stacked=True)
         deadline = time.monotonic() + cfg.sink_timeout_s
         while self.audio.ca.device_by_uid(uid) is None:
             if time.monotonic() > deadline:
@@ -82,6 +89,10 @@ class AggregateEngine(Engine):
             state.outputs.append(OutputState(address=b.speaker.address, position=b.speaker.position,
                                              label=b.speaker.label, sink=b.sink.name, offset_ms=b.speaker.offset_ms,
                                              sink_index=b.sink.index))
+        if self.audio.blackhole() is not None and cfg.engine != "auto":
+            self.log("note: BlackHole is installed but the engine setting forces 'aggregate'. Set the engine to "
+                     "'auto' (Settings in the dashboard, or `soundscape config set engine auto`) to get sync trims "
+                     "and stereo split through the relay engine")
         if any(b.speaker.offset_ms for b in bound):
             self.log("sync trims are ignored by the aggregate engine; " + BLACKHOLE_HINT)
         if cfg.stereo_split:
@@ -208,6 +219,14 @@ class RelayEngine(Engine):
             return self._send("ping") == "pong"
         except AudioError:
             return False
+
+    def mute_output(self, state: EngineState, address: str, muted: bool) -> None:
+        out = state.output_for(address)
+        if out is None:
+            raise AudioError(f"{address} is not part of the running session")
+        reply = self._send(f"mute {out.sink} {1 if muted else 0}")
+        if not reply.startswith("ok"):
+            raise AudioError(f"relay engine refused the mute: {reply}")
 
     def describe(self, state: EngineState) -> Optional[dict]:
         """Live layout from the relay process (which buffer feeds which speaker, frames written)."""

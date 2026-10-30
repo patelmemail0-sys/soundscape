@@ -37,6 +37,7 @@ kAudioDevicePropertyDeviceUID = fourcc("uid ")
 kAudioDevicePropertyTransportType = fourcc("tran")
 kAudioDevicePropertyStreams = fourcc("stm#")
 kAudioDevicePropertyNominalSampleRate = fourcc("nsrt")
+kAudioDevicePropertyAvailableNominalSampleRates = fourcc("nsr#")
 kAudioDevicePropertyLatency = fourcc("ltnc")
 kAudioDevicePropertySafetyOffset = fourcc("saft")
 kAudioDevicePropertyBufferFrameSize = fourcc("fsiz")
@@ -356,8 +357,13 @@ class CoreAudio:
 
     # -- aggregates -----------------------------------------------------------
     def create_aggregate(self, uid: str, name: str, subdevices: Sequence[Tuple[str, bool]], master_uid: str,
-                         private: bool = False) -> int:
-        """``subdevices``: (device uid, drift_compensation). The master device is the clock."""
+                         private: bool = False, stacked: bool = False) -> int:
+        """``subdevices``: (device uid, drift_compensation). The master device is the clock.
+
+        ``stacked`` makes a Multi-Output Device: every sub-device receives the same channels,
+        which is what a stereo app needs to be heard on all speakers. Unstacked aggregates
+        concatenate channels (speaker 1 = ch 1-2, speaker 2 = ch 3-4) and are for callers that
+        address each output themselves (the relay)."""
         if not uid.startswith(AGGREGATE_UID_PREFIX):
             uid = AGGREGATE_UID_PREFIX + uid
         description = {
@@ -366,9 +372,45 @@ class CoreAudio:
             "subdevices": [{"uid": sub_uid, "drift": 1 if drift else 0} for sub_uid, drift in subdevices],
             "master": master_uid,
             "private": 1 if private else 0,
-            "stacked": 0,
+            "stacked": 1 if stacked else 0,
         }
         return self.hal.create_aggregate(description)
+
+    def available_sample_rates(self, device_id: int) -> List[Tuple[float, float]]:
+        """(min, max) ranges the device supports."""
+        try:
+            raw = self.hal.get_raw(device_id, kAudioDevicePropertyAvailableNominalSampleRates)
+        except HALError:
+            return []
+        count = len(raw) // 16
+        return [struct.unpack_from("dd", raw, i * 16) for i in range(count)]
+
+    def supports_rate(self, device_id: int, rate: float) -> bool:
+        ranges = self.available_sample_rates(device_id)
+        if not ranges:
+            return True  # unknown: assume it follows the aggregate
+        return any(lo - 0.5 <= rate <= hi + 0.5 for lo, hi in ranges)
+
+    def align_sample_rates(self, device_ids: Sequence[int], preferred: Sequence[float] = (48000.0, 44100.0)) -> Optional[float]:
+        """Put every device on one nominal rate (a sub-device that cannot follow the aggregate's
+        rate stays silent). Prefers 48 kHz, then 44.1 kHz, then whatever the first device runs."""
+        if not device_ids:
+            return None
+        candidates = list(preferred)
+        try:
+            candidates.append(self._f64(device_ids[0], kAudioDevicePropertyNominalSampleRate))
+        except HALError:
+            pass
+        for rate in candidates:
+            if all(self.supports_rate(d, rate) for d in device_ids):
+                for d in device_ids:
+                    try:
+                        if abs(self._f64(d, kAudioDevicePropertyNominalSampleRate) - rate) > 0.5:
+                            self.set_nominal_sample_rate(d, rate)
+                    except HALError:
+                        continue
+                return rate
+        return None
 
     def destroy_aggregate(self, device_id: int) -> None:
         self.hal.destroy_aggregate(device_id)

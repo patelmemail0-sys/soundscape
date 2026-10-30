@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.3 - 2026-10-30
+
+The "only one speaker plays" fix.
+
+* The aggregate engine now creates a *stacked* aggregate (a Multi-Output Device). A plain
+  aggregate concatenates channels, so stereo apps were heard only on the first speaker.
+* Speakers (and BlackHole, for the relay) are aligned to one sample rate before joining; a
+  sub-device that cannot follow the aggregate's rate would otherwise stay silent.
+* Calibration mutes speakers inside the relay (instant, sample-accurate) instead of sending
+  Bluetooth volume commands, which speakers apply slowly and unpredictably.
+* `up` explains when the engine setting forces 'aggregate' although BlackHole is installed.
+
 ## 0.4.2 - 2026-10-30
 
 Fixes for "only one speaker plays" on macOS.
