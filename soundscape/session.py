@@ -160,16 +160,28 @@ class Session:
         engine = self.engine()
         self.log(f"building virtual output '{self.config.sink_name}' with the {engine.name} engine ...")
         state = engine.build(bound, self.config)
-        for b in bound:
-            if b.speaker.volume is not None:
-                try:
-                    self.pulse.set_volume(b.sink.name, b.speaker.volume)
-                except AudioError as exc:
-                    self.log(f"volume for {b.speaker.label} not applied: {exc.message}")
+        self._apply_levels(bound)
         self._save_state(state)
         self.save_config()
         self.log(f"ready: '{self.config.sink_name}' plays through {', '.join(b.speaker.label for b in bound)}")
         return state
+
+    def _apply_levels(self, bound: List[Bound]) -> None:
+        """Soundscape never limits a speaker: every speaker runs at its own 100% (its physical
+        maximum over Bluetooth absolute volume) unless the user trimmed it deliberately."""
+        raised = []
+        for b in bound:
+            target = b.speaker.volume if b.speaker.volume is not None else 100
+            try:
+                before = self.pulse.get_volume(b.sink.name)
+                self.pulse.set_volume(b.sink.name, target)
+                if before is not None and before < target:
+                    raised.append(f"{b.speaker.label} {before}% -> {target}%")
+            except AudioError as exc:
+                self.log(f"volume for {b.speaker.label} not applied: {exc.message}")
+        if raised:
+            self.log("speakers set to full level: " + ", ".join(raised) +
+                     " (lower them with their sliders or their own buttons)")
 
     def down(self) -> bool:
         lock = self._lock()

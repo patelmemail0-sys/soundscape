@@ -256,6 +256,17 @@ itself: a speaker that comes back on its own without its delay filter, or a sink
 re-created with a new id, triggers a rebuild within one interval. On macOS check `/tmp/soundscape-daemon.log`;
 on Linux `systemctl --user status soundscape`.
 
+## Volume: no limits from Soundscape
+
+The chain runs at unity gain. On `up`, every speaker is set to its own 100% (over Bluetooth
+that is the speaker's physical maximum via absolute volume) unless you have trimmed it
+deliberately, and on macOS the Mac's own level (BlackHole, in relay mode) is set to 100% so
+nothing is lost on the way in. Soundscape never attenuates, compresses or limits: loudness
+is set only by the speaker sliders, the speakers' own buttons, or the Mac's volume keys.
+If a speaker still seems quieter than when it is connected directly, check macOS
+System Settings > Sound > Headphone Safety ("Reduce Loud Audio"), which applies to devices
+macOS classifies as headphones.
+
 ## macOS notes
 
 * The aggregate device has no system volume slider, so the keyboard volume keys do nothing

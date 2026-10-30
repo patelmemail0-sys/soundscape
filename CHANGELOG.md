@@ -12,6 +12,8 @@ First real-hardware findings (HK Onyx Studio 8 + JBL Flip 6 on a MacBook).
 * In relay mode the Master slider is the Mac's volume (BlackHole), so speakers can reach
   full level; the UI says so and `up` warns when it is below 100%.
 * Microphone list in the dashboard marks Bluetooth and speaker microphones.
+* No limiting: `up` runs the chain at unity gain, setting every untrimmed speaker to its own
+  100% and (relay mode) BlackHole to 100%, so each speaker can reach its physical maximum.
 
 ## 0.4.0 - 2026-10-30
 

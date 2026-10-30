@@ -418,8 +418,11 @@ def test_relay_engine_spawns_process_and_controls_it(runner, tmp_path, monkeypat
 
     runner.tools.add(__import__("sys").executable)
     runner.on_popen(__import__("sys").executable, spawn)
+    hal.props[(hal.id_for_uid(UID_BH), ca.kAudioHardwareServiceDeviceProperty_VirtualMainVolume, SCOPE_OUT, 0)] = struct.pack("f", 0.5)
     state = s.up()
     assert state.engine == "relay" and state.sink_name == UID_BH and state.with_delays
+    assert s.pulse.get_volume(UID_BH) == 100  # unity gain through BlackHole
+    assert any("raised from 50% to 100%" in m for m in s.logs)
     argv = [p for p in runner.procs if "-m" in p.argv][0].argv
     assert "soundscape.mac.ioproc" in argv and f"left:{UID_A}:0.000" in argv and f"right:{UID_B}:0.000" in argv
     assert hal.default_output == hal.id_for_uid(UID_BH)

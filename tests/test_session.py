@@ -115,6 +115,16 @@ def test_saved_volume_applied_on_up(session, world):
     assert world.sinks[world.bt_sink_name(MAC_B)]["volume"] == 55
 
 
+def test_up_runs_speakers_at_full_level_unless_trimmed(session, world):
+    """A speaker left at 60% by a previous session must not stay limited."""
+    world.two_speakers(connected=True)
+    world.sinks[world.bt_sink_name(MAC_A)]["volume"] = 60
+    session.up()
+    assert world.sinks[world.bt_sink_name(MAC_A)]["volume"] == 100
+    assert world.sinks[world.bt_sink_name(MAC_B)]["volume"] == 100
+    assert any("full level" in m and "60% -> 100%" in m for m in session.logs)
+
+
 def test_status_reports_everything(session, world):
     before = session.status()
     assert before["up"] is False and before["speakers"][0]["connected"] is False

@@ -59,7 +59,7 @@ class Speaker:
     name: str = ""
     position: str = "left"
     offset_ms: float = 0.0  # extra delay applied to THIS speaker so it lines up with the others
-    volume: Optional[int] = None  # per-speaker trim in percent; None = leave alone
+    volume: Optional[int] = None  # per-speaker trim in percent; None = full level (the speaker's own max)
 
     def __post_init__(self) -> None:
         self.address = normalize_mac(self.address)

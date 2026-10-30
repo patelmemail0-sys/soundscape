@@ -154,9 +154,14 @@ class RelayEngine(Engine):
         self.audio.group = [b.sink.name for b in bound]
         self._route_default(state, cfg)
         level = self.audio.ca.volume(blackhole.id)
-        if level is not None and level < 0.99:
-            self.log(f"the Mac's volume (BlackHole) is at {int(round(level * 100))}%; it feeds every speaker, "
-                     "so raise it with the volume keys or the Master slider for full level")
+        if level is not None and level < 0.999:
+            # the relay runs at unity gain: BlackHole (the Mac's volume) feeds every speaker unchanged
+            if self.audio.ca.set_volume(blackhole.id, 1.0):
+                self.log(f"Mac volume (BlackHole) raised from {int(round(level * 100))}% to 100% so no level is lost; "
+                         "use the speaker sliders or the speakers' own buttons to turn down")
+            else:
+                self.log(f"the Mac's volume (BlackHole) is at {int(round(level * 100))}%; raise it with the volume keys "
+                         "for full level")
         return state
 
     def teardown(self, state: EngineState) -> None:
