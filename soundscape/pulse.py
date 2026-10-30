@@ -412,14 +412,29 @@ class PulseCtl:
         return self.info().default_source
 
     def sources(self) -> List[dict]:
-        """Microphones: ``[{"name", "description"}]`` (monitor sources excluded)."""
+        """Microphones: ``[{"name", "description", "transport", "address"}]`` (monitors excluded)."""
         res = self._pactl("list", "short", "sources", check=False)
         out = []
         for line in res.stdout.splitlines():
             parts = line.split("\t")
             if len(parts) >= 2 and not parts[1].endswith(".monitor"):
-                out.append({"name": parts[1], "description": parts[1]})
+                name = parts[1]
+                m = re.search(r"bluez_(?:input|source)\.(([0-9A-Fa-f]{2}_){5}[0-9A-Fa-f]{2})", name)
+                transport = "bluetooth" if m else ("builtin" if name.startswith("alsa_input") else "other")
+                out.append({"name": name, "description": name, "transport": transport,
+                            "address": m.group(1).replace("_", ":").upper() if m else None})
         return out
+
+    def pick_microphone(self, exclude_addresses: Iterable[str] = ()) -> Optional[str]:
+        """Best microphone for calibration: a wired/built-in input first, never a speaker's own mic."""
+        excluded = {a.upper() for a in exclude_addresses}
+        candidates = [d for d in self.sources() if not (d["address"] and d["address"] in excluded)]
+        rank = {"builtin": 0, "other": 1, "bluetooth": 4}
+        candidates.sort(key=lambda d: rank.get(d["transport"], 2))
+        if candidates:
+            return candidates[0]["name"]
+        default = self.default_source()
+        return default or None
 
     # -- playback / capture (used by test tones and sync calibration) --------
     def play_file(self, path, sink: Optional[str] = None, wait: bool = True):

@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..errors import AudioError, ToolMissing
 from ..pulse import ServerInfo, Sink
@@ -90,8 +90,21 @@ class MacAudio:
         out = []
         for d in self.ca.devices():
             if d.input_channels and "blackhole" not in d.uid.lower() and not d.is_soundscape_aggregate:
-                out.append({"name": d.uid, "description": d.name})
+                out.append({"name": d.uid, "description": d.name, "transport": d.transport,
+                            "address": d.bluetooth_address})
         return out
+
+    def pick_microphone(self, exclude_addresses: Sequence[str] = ()) -> Optional[str]:
+        """Best microphone for calibration: built-in first, never a speaker's own mic.
+
+        Using a Bluetooth speaker's microphone switches that speaker to the headset profile,
+        which has different latency and ruins the measurement."""
+        excluded = {a.upper() for a in exclude_addresses}
+        candidates = [d for d in self.sources()
+                      if not (d["address"] and d["address"].upper() in excluded)]
+        rank = {"builtin": 0, "usb": 1, "thunderbolt": 1, "pci": 1, "virtual": 3, "bluetooth": 4, "bluetooth-le": 4}
+        candidates.sort(key=lambda d: rank.get(d["transport"], 2))
+        return candidates[0]["name"] if candidates else None
 
     def modules(self) -> list:  # PulseAudio concept; nothing to report here
         return []

@@ -189,6 +189,12 @@ def cmd_mute(session: Session, args: argparse.Namespace) -> int:
 
 
 def cmd_offset(session: Session, args: argparse.Namespace) -> int:
+    if args.speaker in ("reset", "all") and (args.ms is None or args.ms == 0):
+        session.reset_offsets()
+        say("all trims reset to 0 ms")
+        return 0
+    if args.ms is None:
+        raise ConfigError("offset needs a value in ms", "example: `soundscape offset right 12.5`, or `offset reset`")
     sp = session.set_offset(args.speaker, args.ms, relative=args.relative)
     say("delays now: " + ", ".join(f"{s.position}={s.label} +{s.offset_ms:.1f} ms" for s in session.config.speakers))
     if not session.state():
@@ -462,9 +468,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("target", nargs="?", default="all")
     s.add_argument("--off", action="store_true", help="unmute instead")
 
-    s = sub.add_parser("offset", help="delay one speaker by N ms (live, remembered)")
-    s.add_argument("speaker", help="left, right, address or name")
-    s.add_argument("ms", type=float)
+    s = sub.add_parser("offset", help="delay one speaker by N ms (live, remembered); `offset reset` zeroes all")
+    s.add_argument("speaker", help="left, right, address, name, or 'reset'")
+    s.add_argument("ms", type=float, nargs="?")
     s.add_argument("--relative", action="store_true", help="add to the current delay instead of replacing it")
 
     s = sub.add_parser("sync", help="align the two speakers (by ear, or --auto with a microphone)")

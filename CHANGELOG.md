@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.1 - 2026-10-30
+
+First real-hardware findings (HK Onyx Studio 8 + JBL Flip 6 on a MacBook).
+
+* Calibration picks the computer's built-in microphone and refuses a speaker's own
+  microphone: macOS makes a newly connected speaker's mic the default input, and recording
+  through it switches that speaker to headset mode, which produced a bogus 121 ms trim.
+* Measurements with an implausible spread (> 300 ms) are rejected instead of applied.
+* `soundscape offset reset` and a Reset trims button in the dashboard.
+* In relay mode the Master slider is the Mac's volume (BlackHole), so speakers can reach
+  full level; the UI says so and `up` warns when it is below 100%.
+* Microphone list in the dashboard marks Bluetooth and speaker microphones.
+
 ## 0.4.0 - 2026-10-30
 
 Web dashboard.

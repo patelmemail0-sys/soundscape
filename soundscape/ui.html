@@ -88,10 +88,11 @@ svg text{fill:var(--fg);font-size:12px}
   <section class="panel">
     <h2>Sync <span class="spacer"></span><span class="sub" id="syncNote"></span></h2>
     <div class="row">
-      <select id="source"><option value="">default microphone</option></select>
+      <select id="source"><option value="">built-in microphone (recommended)</option></select>
       <button class="pri" onclick="calibrate()">Calibrate with microphone</button>
+      <button onclick="resetTrims()">Reset trims</button>
     </div>
-    <p class="sub">Plays one chirp per speaker, three seconds apart, records them with the microphone and delays everyone to match the slowest speaker. Keep the room quiet; put the mic roughly equidistant from the speakers.</p>
+    <p class="sub">Plays one chirp per speaker, three seconds apart, records them with the microphone and delays everyone to match the slowest speaker. Keep the room quiet; put the laptop roughly between the speakers. Never use a Bluetooth speaker's own microphone: it switches that speaker into headset mode and breaks the timing.</p>
     <div class="bars" id="syncBars"><div class="empty">No calibration yet. Current trims are shown on each speaker card.</div></div>
   </section>
 
@@ -153,8 +154,9 @@ async function job(path, body) {
 const jobWaiters = [];
 async function pollJob() {
   if (!jobId) return;
-  const j = await api('/api/job?id=' + jobId);
-  const lastLines = j.log.slice(-4).join('\n');
+  let j;
+  try { j = await api('/api/job?id=' + jobId); } catch (e) { setTimeout(pollJob, 1000); return; }
+  const lastLines = (j.log || []).slice(-4).join('\n');
   if (j.state === 'running' || j.state === 'queued') { toast(j.name, lastLines, true); setTimeout(pollJob, 600); return; }
   if (j.state === 'done') toast(j.name + ': done', lastLines, false); else toast(j.name + ' failed', (j.error || '') + (j.hint ? '\nhint: ' + j.hint : ''), false);
   jobId = null; refresh(); refreshLog();
@@ -167,6 +169,7 @@ async function refresh() {
   render(status);
 }
 function render(s) {
+  if (!s || !Array.isArray(s.speakers)) return;
   document.getElementById('dot').className = 'dot' + (s.up ? ' on' : '');
   document.getElementById('ver').textContent = 'v' + s.version;
   document.getElementById('engine').textContent = s.up ? `up via ${s.engine}${s.is_default ? ' · default output' : ''}${s.stereo_split ? ' · stereo split' : ''}` : 'down';
@@ -237,7 +240,7 @@ function renderPath(s) {
 }
 function renderSettings(s) {
   const c = s.config; const sel = document.getElementById('cfgEngine');
-  if (sel.options.length !== s.engines.length) sel.innerHTML = s.engines.map(e => `<option value="${e}">${e}</option>`).join('');
+  const engines = s.engines || []; if (sel.options.length !== engines.length) sel.innerHTML = engines.map(e => `<option value="${e}">${e}</option>`).join('');
   if (document.activeElement !== sel) sel.value = c.engine;
   document.getElementById('cfgStereo').checked = !!c.stereo_split;
   document.getElementById('cfgComp').checked = !!c.latency_compensate;
@@ -245,7 +248,7 @@ function renderSettings(s) {
 }
 function renderSync(m) {
   const box = document.getElementById('syncBars');
-  if (!m) return;
+  if (!m || !Array.isArray(m.speakers) || !m.speakers.length) return;
   const max = Math.max(5, ...m.speakers.map(x => Math.abs(x.lag_ms)));
   box.innerHTML = m.speakers.map(x => {
     const pct = 50 + (x.lag_ms / max) * 45; const left = Math.min(50, pct), w = Math.abs(pct - 50);
@@ -271,7 +274,7 @@ async function scan() {
   const j = await job('/api/scan', {seconds: 10});
   if (j.state !== 'done') return;
   const known = new Set((status?.speakers || []).map(s => s.address));
-  const list = j.result.filter(d => !known.has(d.address));
+  const list = (j.result || []).filter(d => !known.has(d.address));
   const box = document.getElementById('found');
   if (!list.length) { box.innerHTML = '<div class="empty">Nothing new found. Make sure the speaker is in pairing mode and not connected to a phone.</div>'; return; }
   box.className = 'grid';
@@ -286,20 +289,28 @@ async function addSpeaker(addr) {
 }
 async function doctor() {
   const box = document.getElementById('checks'); box.innerHTML = '<div class="empty"><span class="spin"></span> running checks...</div>';
-  const checks = await api('/api/doctor');
+  const checks = (await api('/api/doctor').catch(() => [])) || [];
   const sym = {ok: '✓', warn: '!', fail: '✕'}, cls = {ok: 'ok', warn: 'warn', fail: 'bad'};
   box.innerHTML = checks.map(c => `<div><span class="st ${cls[c.status]}" style="width:14px">${sym[c.status]}</span><span>${esc(c.title)}${c.detail ? ' <span class="sub">· ' + esc(c.detail) + '</span>' : ''}${c.fix && c.status !== 'ok' ? '<span class="fix">fix: ' + esc(c.fix) + '</span>' : ''}</span></div>`).join('');
 }
 async function refreshLog() {
-  const lines = await api('/api/log?n=60').catch(() => []);
+  const lines = (await api('/api/log?n=60').catch(() => [])) || [];
   const el = document.getElementById('log');
   el.textContent = lines.map(l => new Date(l.t * 1000).toLocaleTimeString() + '  ' + l.msg).join('\n') || 'no activity yet';
   el.scrollTop = el.scrollHeight;
 }
+async function resetTrims() { await api('/api/offset', {target: 'all', offset_ms: 0}); document.getElementById('syncNote').textContent = 'trims reset'; refresh(); }
 async function loadSources() {
-  const src = await api('/api/sources').catch(() => []);
+  const r = await api('/api/sources').catch(() => ({sources: []}));
+  const list = Array.isArray(r) ? r : (r.sources || []);
   const sel = document.getElementById('source');
-  for (const s of src) { const o = document.createElement('option'); o.value = s.name; o.textContent = s.description; sel.appendChild(o); }
+  for (const s of list) {
+    const o = document.createElement('option'); o.value = s.name;
+    const bt = s.transport && s.transport.startsWith('bluetooth');
+    o.textContent = s.description + (s.name === r.recommended ? ' (recommended)' : '') + (s.speaker_mic ? ' — a speaker\'s own mic, do not use' : bt ? ' — Bluetooth, not recommended' : '');
+    if (s.speaker_mic) o.disabled = true;
+    sel.appendChild(o);
+  }
 }
 refresh(); refreshLog(); loadSources();
 setInterval(refresh, 2500); setInterval(refreshLog, 5000);

@@ -298,6 +298,10 @@ class World:
                 return self._sinks_json()
             if kind == "cards":
                 return self._cards_json()
+        if a[:3] == ["list", "short", "sources"]:
+            return ("1\tbluez_input.AA_BB_CC_DD_EE_01.0\tPipeWire\ts16le 1ch 16000Hz\tSUSPENDED\n"
+                    "2\talsa_output.pci-0000_00_1f.3.analog-stereo.monitor\tPipeWire\ts16le 2ch 48000Hz\tIDLE\n"
+                    f"3\t{self.default_source}\tPipeWire\ts16le 2ch 48000Hz\tSUSPENDED\n")
         if a[:3] == ["list", "short", "modules"]:
             return "".join(f"{i}\t{n}\t{args}\n" for i, (n, args) in self.modules.items())
         if a[:3] == ["list", "short", "sink-inputs"]:

@@ -32,6 +32,7 @@ from .session import Session
 Log = Callable[[str], None]
 RECORD_RATE = 16000  # analysis rate; recordings at other rates are decimated to this
 LEAD_S = 0.6  # recording starts this long before playback
+MAX_PLAUSIBLE_LAG_MS = 300.0  # two A2DP speakers never differ by more than this; beyond it the measurement is wrong
 
 
 @dataclass
@@ -110,10 +111,17 @@ class Calibrator:
         count = len(speakers)
         workdir = workdir or Path(tempfile.mkdtemp(prefix="soundscape-"))
         track = tones.calibration_track(workdir / "calibration.wav", count=count)
-        source = source or self.pulse.default_source()
+        speaker_macs = [sp.address for sp in speakers]
+        if not source:
+            picker = getattr(self.pulse, "pick_microphone", None)
+            source = picker(speaker_macs) if picker else self.pulse.default_source()
         if source and (sink in source or any(s in source for s in sinks) or source.endswith(".monitor")):
             raise AudioError(f"recording source {source} is a loopback of the speakers, not a microphone",
                              "pass --source with a real microphone")
+        if source and self._is_speaker_mic(source, speaker_macs):
+            raise AudioError(f"{source} is one of the speakers' own microphones",
+                             "using it switches that speaker to headset mode and ruins the timing; "
+                             "use the computer's built-in microphone (leave --source unset)")
 
         length = tones.calibration_length(count)
         total = LEAD_S + length + 0.8
@@ -174,6 +182,14 @@ class Calibrator:
         lags = [round((a - base - k * tones.CALIBRATION_SPACING_S) * 1000.0, 2) for k, (a, _c) in enumerate(arrivals)]
         return Measurement(speakers=speakers, lag_ms=lags, confidence=min(c for _a, c in arrivals))
 
+    @staticmethod
+    def _is_speaker_mic(source: str, speaker_macs: List[str]) -> bool:
+        key = source.upper()
+        for mac in speaker_macs:
+            if mac.upper() in key or mac.replace(":", "-").upper() in key or mac.replace(":", "_").upper() in key:
+                return True
+        return False
+
     def auto(self, source: Optional[str] = None, apply: bool = True, min_confidence: float = 4.0,
              passes: int = 1) -> Measurement:
         result: Optional[Measurement] = None
@@ -187,6 +203,13 @@ class Calibrator:
                 raise AudioError(f"chirps were not detected reliably (confidence {m.confidence:.1f})",
                                  "reduce background noise, raise the speaker volume, move the mic closer, "
                                  "and make sure every speaker is actually playing")
+            if m.spread_ms > MAX_PLAUSIBLE_LAG_MS:
+                raise AudioError(f"a {m.spread_ms:.0f} ms offset between Bluetooth speakers is not plausible; "
+                                 "the measurement was discarded",
+                                 "this happens when the microphone is a Bluetooth device (it switches to headset "
+                                 "mode) or picked up an echo. Use the computer's built-in microphone, place it "
+                                 "between the speakers, keep the room quiet, and reset the trims first if they "
+                                 "look wrong (`soundscape offset reset`)")
             if apply and m.spread_ms >= 0.5:
                 latest = max(m.lag_ms)
                 for sp, lag in zip(m.speakers, m.lag_ms):

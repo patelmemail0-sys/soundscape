@@ -91,7 +91,8 @@ def test_scan_add_remove_config_doctor_sources(session, world):
     assert app.handle("POST", "/api/config", {"key": "speakers", "value": []})[0] == 400
     checks = app.handle("GET", "/api/doctor", None)[1]
     assert checks and {c["status"] for c in checks} <= {"ok", "warn", "fail"}
-    assert app.handle("GET", "/api/sources", None)[1] == []  # fake pactl has no sources listing
+    sources = app.handle("GET", "/api/sources", None)[1]
+    assert sources["recommended"] == world.default_source and any(x["speaker_mic"] for x in sources["sources"])
     # a job that fails reports the error with the hint, not a crash
     status, body, _ = app.handle("POST", "/api/add", {"address": "not-a-mac"})
     assert body["job"]["state"] == "error" and "Bluetooth address" in body["job"]["error"]

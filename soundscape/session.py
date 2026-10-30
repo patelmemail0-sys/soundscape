@@ -227,6 +227,22 @@ class Session:
         self.save_config()
         return sp
 
+    def reset_offsets(self) -> None:
+        """Zero every speaker's trim, live if the engine is up."""
+        for sp in self.config.speakers:
+            sp.offset_ms = 0.0
+        state = self.state()
+        if state:
+            engine = self.engine(state)
+            for sp in self.config.speakers:
+                if state.output_for(sp.address):
+                    try:
+                        engine.set_offset(state, sp.address, 0.0)
+                    except AudioError as exc:
+                        self.log(f"could not reset {sp.label}: {exc.message}")
+            self._save_state(state)
+        self.save_config()
+
     def apply_measured_gap(self, early: Speaker, late: Speaker, gap_ms: float) -> None:
         """``late`` was heard ``gap_ms`` after ``early``: delay ``early`` by that much."""
         early.offset_ms = round(early.offset_ms + gap_ms, 3)

@@ -207,9 +207,16 @@ class RemoteApp:
             return [self._device(d) for d in self.session.bluez.devices()]
         if route == "/api/sources":
             try:
-                return self.session.pulse.sources()
+                sources = self.session.pulse.sources()
             except SoundscapeError:
-                return []
+                sources = []
+            speaker_macs = [sp.address for sp in self.session.config.speakers]
+            picker = getattr(self.session.pulse, "pick_microphone", None)
+            recommended = picker(speaker_macs) if picker else None
+            for src in sources:
+                addr = (src.get("address") or "").upper()
+                src["speaker_mic"] = bool(addr and addr in speaker_macs)
+            return {"recommended": recommended, "sources": sources}
         if route == "/api/doctor":
             from .doctor import run_checks
             with self._lock:
@@ -291,6 +298,9 @@ class RemoteApp:
                 return {"ok": True, "muted": mute}
             if route == "/api/offset":
                 target = str(body["target"])
+                if target in ("all", "reset"):
+                    s.reset_offsets()
+                    return {"ok": True, "offsets": {x.position: 0.0 for x in s.config.speakers}}
                 if "delta_ms" in body:
                     sp = s.set_offset(target, float(body["delta_ms"]), relative=True)
                 else:
