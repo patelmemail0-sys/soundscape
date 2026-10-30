@@ -285,11 +285,8 @@ class Session:
 
     def add_speaker(self, address: str, position: Optional[str] = None, name: str = "",
                     replace: bool = False, connect: bool = True) -> Speaker:
-        taken = {s.position for s in self.config.speakers}
         if position is None:
-            position = next((p for p in ("left", "right", "third", "fourth") if p not in taken), None)
-            if position is None:
-                raise ConfigError("all four positions are taken", "remove a speaker first")
+            position = self.config.next_position()
         dev = self.bluez.device(address)
         if not name and dev:
             name = dev.label if dev.label != dev.address else ""

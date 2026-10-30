@@ -72,6 +72,11 @@ Two A2DP streams share one radio and often one antenna with Wi-Fi.
    (`soundscape --adapter hci1 ...`); pairing each speaker to its own adapter and joining
    them is possible by hand today and on the roadmap for `setup`.
 
+**Three or more speakers: the last one keeps dropping**
+Bluetooth bandwidth. Each speaker is a separate A2DP stream on one radio. Lower the codec
+bitrate (below), keep speakers close and in line of sight, and prefer a USB Bluetooth 5.x
+adapter. Beyond three or four speakers a second adapter is the realistic fix.
+
 **Volume sounds odd, or one speaker is louder**
 Set the per-speaker trims: `soundscape volume left 80`. They are remembered. Keep the
 master (`soundscape volume 60`) as the thing you change day to day; trims at 100% mean no

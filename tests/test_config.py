@@ -63,4 +63,19 @@ def test_invalid_engine_and_position():
     with pytest.raises(ConfigError):
         Config(engine="jack")
     with pytest.raises(ConfigError):
-        Speaker("AA:BB:CC:DD:EE:01", position="middle")
+        Speaker("AA:BB:CC:DD:EE:01", position="")
+    with pytest.raises(ConfigError):
+        Speaker("AA:BB:CC:DD:EE:01", position="3rd floor")  # must start with a letter
+    assert Speaker("AA:BB:CC:DD:EE:01", position="Living Room").position == "living_room"
+
+
+def test_positions_are_free_form_and_ordered():
+    cfg = Config()
+    for i, pos in enumerate(("patio", "right", "speaker4", "left", "kitchen"), 1):
+        cfg.add(Speaker(f"AA:BB:CC:DD:EE:0{i}", pos, pos))
+    assert [s.position for s in cfg.speakers] == ["left", "right", "speaker4", "kitchen", "patio"]
+    assert cfg.next_position() == "speaker3"
+    cfg.add(Speaker("AA:BB:CC:DD:EE:09", "x", cfg.next_position()))
+    assert cfg.next_position() == "speaker5"
+    assert cfg.find("Kitchen").address == "AA:BB:CC:DD:EE:05"
+    assert cfg.find("living room") is None

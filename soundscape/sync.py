@@ -20,7 +20,7 @@ import termios
 import threading
 import time
 import tty
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -36,12 +36,39 @@ LEAD_S = 0.6  # recording starts this long before playback
 
 @dataclass
 class Measurement:
-    first: Speaker
-    second: Speaker
-    gap_ms: float  # second arrival - first arrival - nominal 3 s, in ms (positive: second is later)
+    """Arrival of every speaker relative to the first one, in ms (positive: later)."""
+    speakers: List[Speaker]
+    lag_ms: List[float]  # lag_ms[0] is always 0.0
     confidence: float
-    applied_to: Optional[Speaker] = None
-    applied_ms: float = 0.0
+    applied: Dict[str, float] = field(default_factory=dict)  # address -> extra delay applied
+
+    @property
+    def first(self) -> Speaker:
+        return self.speakers[0]
+
+    @property
+    def second(self) -> Speaker:
+        return self.speakers[1]
+
+    @property
+    def gap_ms(self) -> float:
+        """Two-speaker convenience: how much later the second speaker arrives."""
+        return self.lag_ms[1] if len(self.lag_ms) > 1 else 0.0
+
+    @property
+    def applied_to(self) -> Optional[Speaker]:
+        for sp in self.speakers:
+            if self.applied.get(sp.address):
+                return sp
+        return None
+
+    @property
+    def applied_ms(self) -> float:
+        return max(self.applied.values(), default=0.0)
+
+    @property
+    def spread_ms(self) -> float:
+        return max(self.lag_ms) - min(self.lag_ms)
 
 
 class Calibrator:
@@ -53,11 +80,11 @@ class Calibrator:
         self.pulse = session.pulse
 
     # -- helpers ---------------------------------------------------------
-    def _pair(self) -> List[Speaker]:
-        speakers = self.session.config.speakers
+    def _group(self) -> List[Speaker]:
+        speakers = self.session.config.ordered()
         if len(speakers) < 2:
-            raise ConfigError("need two configured speakers to calibrate", "run `soundscape setup` first")
-        return speakers[:2]
+            raise ConfigError("need at least two configured speakers to calibrate", "run `soundscape setup` first")
+        return speakers
 
     def _require_up(self) -> str:
         state = self.session.state()
@@ -78,18 +105,20 @@ class Calibrator:
 
     # -- microphone ------------------------------------------------------
     def measure(self, source: Optional[str] = None, workdir: Optional[Path] = None) -> Measurement:
-        a, b = self._pair()
+        speakers = self._group()
         sink = self._require_up()
-        sink_a, sink_b = self._sink_of(a), self._sink_of(b)
+        sinks = [self._sink_of(sp) for sp in speakers]
+        count = len(speakers)
         workdir = workdir or Path(tempfile.mkdtemp(prefix="soundscape-"))
-        track = tones.calibration_track(workdir / "calibration.wav")
+        track = tones.calibration_track(workdir / "calibration.wav", count=count)
         source = source or self.pulse.default_source()
-        if source and (sink in source or any(s in source for s in (sink_a, sink_b)) or source.endswith(".monitor")):
+        if source and (sink in source or any(s in source for s in sinks) or source.endswith(".monitor")):
             raise AudioError(f"recording source {source} is a loopback of the speakers, not a microphone",
                              "pass --source with a real microphone")
 
-        self.log(f"recording from {source or 'the default microphone'}; keep the room quiet for ~7 seconds")
-        total = LEAD_S + tones.CALIBRATION_TOTAL_S + 0.8
+        length = tones.calibration_length(count)
+        total = LEAD_S + length + 0.8
+        self.log(f"recording from {source or 'the default microphone'}; keep the room quiet for ~{total:.0f} seconds")
         result: Dict[str, Any] = {}
 
         def recorder() -> None:
@@ -98,34 +127,39 @@ class Calibrator:
             except Exception as exc:  # surfaced after the playback sequence
                 result["error"] = exc
 
+        def solo(index: int) -> None:
+            for i, name in enumerate(sinks):
+                self.pulse.set_mute(name, i != index)
+
         thread = threading.Thread(target=recorder, daemon=True)
         thread.start()
         try:
             self._sleep(LEAD_S)  # let the capture stream settle before the first chirp
-            self.pulse.set_mute(sink_b, True)
-            self.pulse.set_mute(sink_a, False)
+            solo(0)
             started = time.monotonic()
             player = self._play(track, sink)
-            self._sleep(tones.CALIBRATION_SWITCH_S)
-            self.pulse.set_mute(sink_a, True)
-            self.pulse.set_mute(sink_b, False)
-            remaining = tones.CALIBRATION_TOTAL_S + 0.8 - (time.monotonic() - started)
+            elapsed = 0.0
+            for k, switch_at in enumerate(tones.calibration_switches(count), start=1):
+                self._sleep(max(0.0, switch_at - elapsed))
+                elapsed = switch_at
+                solo(k)
+            remaining = length + 0.8 - max(elapsed, time.monotonic() - started)
             self._sleep(max(0.0, remaining))
             try:
                 player.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 player.kill()
         finally:
-            self.pulse.set_mute(sink_a, False)
-            self.pulse.set_mute(sink_b, False)
+            for name in sinks:
+                self.pulse.set_mute(name, False)
         thread.join(timeout=total + 10)
         if "error" in result:
-            raise result["error"]  # type: ignore[misc]
+            raise result["error"]
         if "data" not in result:
             raise AudioError("the recording did not finish", "try again; if it persists pass --source")
         recording: List[float]
         rate: int
-        recording, rate = result["data"]  # type: ignore[assignment]
+        recording, rate = result["data"]
         if rate != RECORD_RATE:
             recording = dsp.decimate(recording, rate, RECORD_RATE)
             rate = RECORD_RATE
@@ -133,50 +167,52 @@ class Calibrator:
             raise AudioError("the recording is too short; the microphone did not deliver audio",
                              "check the input device and pass --source")
         template = tones.chirp(rate)
-        # chirps were sent at 1.0 s and 4.0 s *after playback started*; the recorder started
+        # chirp k was sent at calibration_times()[k] after playback started; the recorder began
         # LEAD_S earlier, so search from those marks minus a little slack.
-        gap_s, c1, c2 = dsp.measure_gap(
-            recording, template, rate,
-            first_at_s=tones.CALIBRATION_FIRST_S + LEAD_S - 0.3,
-            second_at_s=tones.CALIBRATION_SECOND_S + LEAD_S - 0.3,
-            max_latency_s=1.5)
-        nominal = tones.CALIBRATION_SECOND_S - tones.CALIBRATION_FIRST_S
-        gap_ms = dsp.best_offset_ms(gap_s, nominal)
-        return Measurement(first=a, second=b, gap_ms=gap_ms, confidence=min(c1, c2))
+        sent = [t + LEAD_S - 0.3 for t in tones.calibration_times(count)]
+        arrivals = dsp.locate(recording, template, rate, sent, max_latency_s=1.5)
+        base = arrivals[0][0]
+        lags = [round((a - base - k * tones.CALIBRATION_SPACING_S) * 1000.0, 2) for k, (a, _c) in enumerate(arrivals)]
+        return Measurement(speakers=speakers, lag_ms=lags, confidence=min(c for _a, c in arrivals))
 
     def auto(self, source: Optional[str] = None, apply: bool = True, min_confidence: float = 4.0,
              passes: int = 1) -> Measurement:
         result: Optional[Measurement] = None
         for i in range(passes):
             m = self.measure(source)
-            self.log(f"pass {i + 1}: {m.second.label} arrives {m.gap_ms:+.1f} ms relative to "
-                     f"{m.first.label} (confidence {m.confidence:.1f})")
+            ref = m.first
+            for sp, lag in zip(m.speakers[1:], m.lag_ms[1:]):
+                self.log(f"pass {i + 1}: {sp.label} arrives {lag:+.1f} ms relative to {ref.label}")
+            self.log(f"pass {i + 1}: confidence {m.confidence:.1f}, spread {m.spread_ms:.1f} ms")
             if m.confidence < min_confidence:
                 raise AudioError(f"chirps were not detected reliably (confidence {m.confidence:.1f})",
                                  "reduce background noise, raise the speaker volume, move the mic closer, "
-                                 "and make sure both speakers are actually playing")
-            if apply and abs(m.gap_ms) >= 0.5:
-                early, late = (m.first, m.second) if m.gap_ms > 0 else (m.second, m.first)
-                self.session.apply_measured_gap(early, late, abs(m.gap_ms))
-                m.applied_to, m.applied_ms = early, abs(m.gap_ms)
-                self.log(f"delayed {early.label} by {abs(m.gap_ms):.1f} ms (now {early.offset_ms:.1f} ms)")
+                                 "and make sure every speaker is actually playing")
+            if apply and m.spread_ms >= 0.5:
+                latest = max(m.lag_ms)
+                for sp, lag in zip(m.speakers, m.lag_ms):
+                    extra = round(latest - lag, 2)  # everyone waits for the slowest speaker
+                    if extra >= 0.5:
+                        self.session.set_offset(sp.address, extra, relative=True)
+                        m.applied[sp.address] = extra
+                        self.log(f"delayed {sp.label} by {extra:.1f} ms (now {sp.offset_ms:.1f} ms)")
             result = m
         assert result is not None
         return result
 
     # -- by ear ----------------------------------------------------------
     def by_ear(self, step_ms: float = 5.0, fine_ms: float = 1.0) -> None:
-        a, b = self._pair()
+        speakers = self._group()
         sink = self._require_up()
         if not sys.stdin.isatty():
             raise AudioError("by-ear sync needs an interactive terminal", "use `soundscape sync --auto`")
         workdir = Path(tempfile.mkdtemp(prefix="soundscape-"))
         track = tones.click_track(workdir / "clicks.wav", seconds=60)
-        target = b
+        target = speakers[1]
         self.log("Listening test: you should hear ONE click per beat. If it sounds doubled or smeared,")
         self.log("nudge the delay until the clicks merge.")
-        self.log(f"  [ / ]  delay {target.label} by -{step_ms:.0f} / +{step_ms:.0f} ms     , / .  fine -{fine_ms:.0f} / +{fine_ms:.0f} ms")
-        self.log("  t  switch which speaker you are nudging      0  reset both to 0      q  save and quit")
+        self.log(f"  [ / ]  delay the marked speaker by -{step_ms:.0f} / +{step_ms:.0f} ms     , / .  fine -{fine_ms:.0f} / +{fine_ms:.0f} ms")
+        self.log("  t  mark the next speaker      0  reset all to 0      q  save and quit")
         player = self._play(track, sink)
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
@@ -185,7 +221,7 @@ class Calibrator:
             while True:
                 if player.poll() is not None:
                     player = self._play(track, sink)
-                self._print_offsets(a, b, target)
+                self._print_offsets(speakers, target)
                 r, _, _ = select.select([fd], [], [], 0.5)
                 if not r:
                     continue
@@ -193,36 +229,37 @@ class Calibrator:
                 if ch == "q":
                     break
                 if ch == "t":
-                    target = a if target is b else b
+                    target = speakers[(speakers.index(target) + 1) % len(speakers)]
                 elif ch == "0":
-                    a.offset_ms = b.offset_ms = 0.0
-                    self.session.set_offset(a.address, 0.0)
-                    self.session.set_offset(b.address, 0.0)
+                    for sp in speakers:
+                        sp.offset_ms = 0.0
+                        self.session.set_offset(sp.address, 0.0)
                 else:
                     delta = {"[": -step_ms, "]": step_ms, ",": -fine_ms, ".": fine_ms}.get(ch)
                     if delta is None:
                         continue
-                    self._nudge(target, delta, a, b)
+                    self._nudge(target, delta, speakers)
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
             if player.poll() is None:
                 player.terminate()
             sys.stdout.write("\n")
-        self.log(f"saved: {a.label} +{a.offset_ms:.1f} ms, {b.label} +{b.offset_ms:.1f} ms")
+        self.log("saved: " + ", ".join(f"{sp.label} +{sp.offset_ms:.1f} ms" for sp in speakers))
 
-    def _nudge(self, target: Speaker, delta: float, a: Speaker, b: Speaker) -> None:
-        other = a if target is b else b
-        if target.offset_ms + delta < 0:
-            # delaying the target "negatively" means delaying the other one instead
-            other.offset_ms = round(other.offset_ms - (target.offset_ms + delta), 3)
+    def _nudge(self, target: Speaker, delta: float, speakers: List[Speaker]) -> None:
+        """Delay ``target`` by ``delta``; a negative result is turned into a delay on everyone else."""
+        new = target.offset_ms + delta
+        if new < 0:
+            for sp in speakers:
+                if sp is not target:
+                    sp.offset_ms = round(sp.offset_ms - new, 3)
             target.offset_ms = 0.0
         else:
-            target.offset_ms = round(target.offset_ms + delta, 3)
-        self.session.set_offset(target.address, target.offset_ms)
-        self.session.set_offset(other.address, other.offset_ms)
+            target.offset_ms = round(new, 3)
+        for sp in speakers:
+            self.session.set_offset(sp.address, sp.offset_ms)
 
-    def _print_offsets(self, a: Speaker, b: Speaker, target: Speaker) -> None:
-        mark_a = ">" if target is a else " "
-        mark_b = ">" if target is b else " "
-        sys.stdout.write(f"\r{mark_a}{a.label}: +{a.offset_ms:6.1f} ms   {mark_b}{b.label}: +{b.offset_ms:6.1f} ms   ")
+    def _print_offsets(self, speakers: List[Speaker], target: Speaker) -> None:
+        cells = [f"{'>' if sp is target else ' '}{sp.label}: +{sp.offset_ms:6.1f} ms" for sp in speakers]
+        sys.stdout.write("\r" + "   ".join(cells) + "   ")
         sys.stdout.flush()

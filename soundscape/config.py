@@ -6,12 +6,17 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .errors import ConfigError
 
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
-POSITIONS = ("left", "right", "third", "fourth")
+# "left" and "right" are special (stereo split); every other position is a free name such as
+# "kitchen" or "speaker3". Legacy names from 0.1 ("third", "fourth") are ordinary names now.
+STEREO_POSITIONS = ("left", "right")
+POSITIONS = STEREO_POSITIONS  # kept for callers that list the well-known names
+POSITION_RE = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
+LEGACY_POSITIONS = {"third": 3, "fourth": 4}
 ENGINES = ("auto", "pipewire", "pulse", "aggregate", "relay")
 SINK_NAME = "soundscape"
 
@@ -27,6 +32,27 @@ def mac_underscored(mac: str) -> str:
     return normalize_mac(mac).replace(":", "_")
 
 
+def normalize_position(value: str) -> str:
+    """Lower-case slug: ``"Living Room"`` -> ``"living_room"``. Must start with a letter."""
+    slug = re.sub(r"[\s]+", "_", str(value).strip().lower())
+    if not POSITION_RE.match(slug):
+        raise ConfigError(f"invalid position {value!r}",
+                          "use left, right, or a short name starting with a letter (letters, digits, _ and -)")
+    return slug
+
+
+def position_rank(position: str) -> Tuple[int, str]:
+    """Sort key: left, right, then legacy third/fourth, then everything else by name."""
+    if position in STEREO_POSITIONS:
+        return (STEREO_POSITIONS.index(position), position)
+    if position in LEGACY_POSITIONS:
+        return (LEGACY_POSITIONS[position], position)
+    m = re.match(r"^speaker(\d+)$", position)
+    if m:
+        return (int(m.group(1)), position)
+    return (100, position)
+
+
 @dataclass
 class Speaker:
     address: str
@@ -37,8 +63,11 @@ class Speaker:
 
     def __post_init__(self) -> None:
         self.address = normalize_mac(self.address)
-        if self.position not in POSITIONS:
-            raise ConfigError(f"unknown position {self.position!r}", f"use one of {', '.join(POSITIONS)}")
+        self.position = normalize_position(self.position)
+
+    @property
+    def is_stereo_side(self) -> bool:
+        return self.position in STEREO_POSITIONS
 
     @property
     def label(self) -> str:
@@ -69,10 +98,14 @@ class Config:
 
     # -- speaker helpers -------------------------------------------------
     def find(self, selector: str) -> Optional[Speaker]:
-        """Match by position (left/right), address, or case-insensitive name/alias prefix."""
+        """Match by position (left/right/any name), address, or case-insensitive name prefix."""
         sel = selector.strip()
+        try:
+            slug = normalize_position(sel)
+        except ConfigError:
+            slug = ""
         for sp in self.speakers:
-            if sp.position == sel.lower():
+            if slug and sp.position == slug:
                 return sp
         try:
             mac = normalize_mac(sel)
@@ -107,8 +140,24 @@ class Config:
                 )
             self.speakers = [s for s in self.speakers if s.position != speaker.position]
         self.speakers.append(speaker)
-        order = {p: i for i, p in enumerate(POSITIONS)}
-        self.speakers.sort(key=lambda s: order[s.position])
+        self.sort()
+
+    def sort(self) -> None:
+        self.speakers.sort(key=lambda s: position_rank(s.position))
+
+    def next_position(self) -> str:
+        """left, right, then speaker3, speaker4, ... whichever is free."""
+        taken = {s.position for s in self.speakers}
+        for p in STEREO_POSITIONS:
+            if p not in taken:
+                return p
+        n = 3
+        while f"speaker{n}" in taken or (n == 3 and "third" in taken) or (n == 4 and "fourth" in taken):
+            n += 1
+        return f"speaker{n}"
+
+    def ordered(self) -> List[Speaker]:
+        return sorted(self.speakers, key=lambda s: position_rank(s.position))
 
     def remove(self, selector: str) -> Speaker:
         sp = self.require(selector)

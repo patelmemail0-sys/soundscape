@@ -150,18 +150,20 @@ def test_scan_add_remove(session, world):
     assert [d.address for d in found][:2] == [MAC_A, MAC_B]  # paired first
     assert all(d.is_audio_sink for d in found)
     sp = session.add_speaker("AA:BB:CC:DD:EE:03")
-    assert sp.position == "third" and sp.name == "Bedroom" and world.devices["AA:BB:CC:DD:EE:03"]["connected"]
-    removed = session.remove_speaker("third", forget=True)
+    assert sp.position == "speaker3" and sp.name == "Bedroom" and world.devices["AA:BB:CC:DD:EE:03"]["connected"]
+    removed = session.remove_speaker("speaker3", forget=True)
     assert removed.address == "AA:BB:CC:DD:EE:03" and "AA:BB:CC:DD:EE:03" not in world.devices
     assert len(session.config.speakers) == 2
 
 
-def test_add_speaker_positions_exhausted(runner, world, paths):
+def test_add_speaker_keeps_numbering_after_legacy_names(runner, world, paths):
     cfg = make_config()
     cfg.speakers = [Speaker(f"AA:BB:CC:DD:EE:0{i}", f"s{i}", p) for i, p in enumerate(("left", "right", "third", "fourth"), 1)]
     s = Session(runner=runner, paths=paths, config=cfg, sleep=lambda _s: None)
-    with pytest.raises(ConfigError):
-        s.add_speaker("AA:BB:CC:DD:EE:09", connect=False)
+    sp = s.add_speaker("AA:BB:CC:DD:EE:09", connect=False)
+    assert sp.position == "speaker5"
+    custom = s.add_speaker("AA:BB:CC:DD:EE:08", position="Back Porch", connect=False)
+    assert custom.position == "back_porch" and s.config.find("back porch") is custom
 
 
 def test_connect_speakers_fills_in_names(runner, world, paths):

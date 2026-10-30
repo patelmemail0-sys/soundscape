@@ -144,31 +144,36 @@ def decimate(signal: Sequence[float], src_rate: int, dst_rate: int) -> List[floa
     return resample_linear(signal, src_rate, dst_rate)
 
 
-def measure_gap(recording: Sequence[float], template: Sequence[float], rate: int,
-                first_at_s: float, second_at_s: float, max_latency_s: float = 1.2
-                ) -> Tuple[float, float, float]:
-    """Locate two template arrivals and return ``(gap_seconds, conf1, conf2)``.
+def locate(recording: Sequence[float], template: Sequence[float], rate: int,
+           sent_at_s: Sequence[float], max_latency_s: float = 1.2) -> List[Tuple[float, float]]:
+    """For each send time, the template's arrival ``(seconds, confidence)`` in the recording.
 
-    ``first_at_s``/``second_at_s`` are when the chirps were *sent*; arrivals are searched in
-    ``[sent, sent + max_latency_s]`` so pipeline latency never has to be known.
+    Arrivals are searched in ``[sent, sent + max_latency_s]`` so pipeline latency never has
+    to be known.
     """
     corr = cross_correlate(normalize(recording), normalize(template))
     guard = len(template)
-    w1 = (int(first_at_s * rate), int((first_at_s + max_latency_s) * rate))
-    w2 = (int(second_at_s * rate), int((second_at_s + max_latency_s) * rate))
-    p1, _ = peak_in_window(corr, *w1)
-    p2, _ = peak_in_window(corr, *w2)
-    c1 = confidence(corr, p1, w1[0], w1[1], guard)
-    c2 = confidence(corr, p2, w2[0], w2[1], guard)
-    gap = (refine_peak(corr, p2) - refine_peak(corr, p1)) / rate
-    return gap, c1, c2
+    out = []
+    for sent in sent_at_s:
+        window = (int(sent * rate), int((sent + max_latency_s) * rate))
+        peak, _ = peak_in_window(corr, *window)
+        out.append((refine_peak(corr, peak) / rate, confidence(corr, peak, window[0], window[1], guard)))
+    return out
+
+
+def measure_gap(recording: Sequence[float], template: Sequence[float], rate: int,
+                first_at_s: float, second_at_s: float, max_latency_s: float = 1.2
+                ) -> Tuple[float, float, float]:
+    """Two-chirp convenience wrapper: ``(gap_seconds, conf1, conf2)``."""
+    (a1, c1), (a2, c2) = locate(recording, template, rate, [first_at_s, second_at_s], max_latency_s)
+    return a2 - a1, c1, c2
 
 
 def best_offset_ms(gap_s: float, nominal_gap_s: float) -> float:
     return round((gap_s - nominal_gap_s) * 1000.0, 2)
 
 
-__all__ = ["cross_correlate", "measure_gap", "best_offset_ms", "resample_linear", "decimate", "normalize",
+__all__ = ["cross_correlate", "locate", "measure_gap", "best_offset_ms", "resample_linear", "decimate", "normalize",
            "peak_in_window", "refine_peak", "confidence"]
 
 

@@ -129,7 +129,7 @@ def test_version_and_help(capsys):
 def test_setup_wizard_noninteractive_path(runner, world, tmp_path, monkeypatch, capsys):
     world.two_speakers()
     root = tmp_path / "root"
-    answers = iter(["", "1", "1", "y", "n"])  # enter, pick left, pick right (first remaining), keep L/R, no mic sync
+    answers = iter(["", "1", "1", "n", "y", "n"])  # enter, pick left, pick right, no more speakers, keep L/R, no mic sync
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     assert run(runner, root, "setup", "--seconds", "1") == 0
     cfg = Config.load(root / "config" / "config.json")
@@ -141,7 +141,7 @@ def test_setup_wizard_noninteractive_path(runner, world, tmp_path, monkeypatch, 
 def test_setup_swaps_positions_when_asked(runner, world, tmp_path, monkeypatch):
     world.two_speakers()
     root = tmp_path / "root"
-    answers = iter(["", "1", "1", "n", "n"])
+    answers = iter(["", "1", "1", "n", "n", "n"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     assert run(runner, root, "setup", "--seconds", "1") == 0
     cfg = Config.load(root / "config" / "config.json")

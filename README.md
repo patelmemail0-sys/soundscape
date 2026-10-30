@@ -1,9 +1,9 @@
 # Soundscape
 
-**One audio source, two Bluetooth speakers, in sync.**
+**One audio source, all your Bluetooth speakers, in sync.**
 
-Soundscape joins two (or more) ordinary Bluetooth speakers into a single output on a **Mac**
-or a **Linux** machine. Everything you play, from Spotify in a browser to a local file, comes
+Soundscape joins two, three or more ordinary Bluetooth speakers into a single output on a
+**Mac** or a **Linux** machine. Everything you play, from Spotify in a browser to a local file, comes
 out of both speakers at the same time, aligned to within a few milliseconds, with no EQ or
 other processing applied to the audio. An **iPhone** cannot do this on its own, but it can
 AirPlay to the Mac and let Soundscape take it from there (see below).
@@ -180,6 +180,29 @@ AirPlay buffering on top of Bluetooth's own latency, which is fine for music. If
 speakers are the same model, their maker's own party/stereo mode (JBL PartyBoost, Bose
 SimpleSync, Sony Party Connect, UE PartyUp) is the only way to do it straight from the phone.
 
+## Three or more speakers
+
+Positions are just names. `left` and `right` are special only for stereo split; everything
+else is up to you:
+
+```bash
+soundscape add AA:BB:CC:DD:EE:03 --position kitchen
+soundscape add AA:BB:CC:DD:EE:04 --position patio
+soundscape up
+soundscape volume patio 60
+soundscape offset kitchen 4.5
+```
+
+`soundscape setup` asks "add another speaker?" after the first two and lets you name each
+spot. `sync --auto` calibrates any number of speakers in one pass: it plays one chirp per
+speaker, three seconds apart, and delays everyone to match the slowest. `test` plays a rising
+pitch per speaker in position order so you can tell them apart.
+
+Bandwidth is the practical limit: every speaker is its own A2DP stream on the same radio.
+Two is easy, three usually fine at standard SBC/AAC bitrates, four or more depends on the
+adapter and the room. If you hear dropouts with many speakers, lower the codec bitrate
+(see [Troubleshooting](docs/TROUBLESHOOTING.md#dropouts)) or add a second Bluetooth adapter.
+
 ## Stereo across the room
 
 By default both speakers play full stereo, which is what you want for a kitchen and a
@@ -230,15 +253,15 @@ on Linux `systemctl --user status soundscape`.
 soundscape setup                guided first run
 soundscape doctor               check Bluetooth, sound server, tools; print fixes
 soundscape scan [--seconds N]   discover speakers in pairing mode
-soundscape add ADDR [--position left|right] [--name N]
-soundscape remove left|right|ADDR [--forget]
+soundscape add ADDR [--position left|right|NAME] [--name N]   any number of speakers
+soundscape remove POSITION|ADDR|NAME [--forget]
 soundscape up [--engine pipewire|pulse] [--stereo] [--no-default] [--no-compensate]
 soundscape down
 soundscape status [--json]
 soundscape volume 40            both speakers
 soundscape volume left 70       one speaker (remembered)
-soundscape mute [left|right|all] [--off]
-soundscape offset right 12.5 [--relative]
+soundscape mute [POSITION|all] [--off]
+soundscape offset POSITION 12.5 [--relative]
 soundscape sync [--auto] [--source SRC] [--passes N] [--no-apply]
 soundscape test [left|right]    tone on each speaker in turn
 soundscape play FILES... [--loop] [--shuffle] [--player mpv|ffplay|paplay]
@@ -294,7 +317,7 @@ PipeWire config is validated against PipeWire's own parser in CI when available.
 
 ## Status
 
-0.2.0. Linux and macOS backends, unit-tested against emulated BlueZ, PipeWire, PulseAudio
+0.3.0. Linux and macOS backends, any number of speakers, unit-tested against emulated BlueZ, PipeWire, PulseAudio
 and CoreAudio; the Linux engine is additionally validated against a live PipeWire 1.0.5 in
 CI. Neither backend has been run against physical speakers by the author yet. The first
 thing to do with real hardware is `soundscape doctor`, then `soundscape setup`, and file an

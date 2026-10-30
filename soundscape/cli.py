@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, List, Optional, Sequence
 
 from . import __version__, tones
-from .config import ENGINES, POSITIONS, Config, Speaker
+from .config import ENGINES, Config, Speaker
 from .doctor import FAIL, run_checks, summarize
 from .errors import AudioError, ConfigError, SoundscapeError
 from .paths import Paths
@@ -35,13 +35,14 @@ def err(msg: str) -> None:
 def play_position_tones(session: Session, only: Optional[str] = None, log: Log = say) -> None:
     """Play a distinct tone directly to each speaker so the user can tell left from right."""
     workdir = Path(tempfile.mkdtemp(prefix="soundscape-"))
-    speakers = session.config.speakers if not only else [session.config.require(only)]
+    ordered = session.config.ordered()
+    speakers = ordered if not only else [session.config.require(only)]
     for sp in speakers:
         sink = session.pulse.bluetooth_sink(sp.address)
         if sink is None:
             log(f"{sp.position}: {sp.label} has no audio sink (not connected?)")
             continue
-        path = tones.position_tone(workdir / f"{sp.position}.wav", sp.position)
+        path = tones.position_tone(workdir / f"{sp.position}.wav", sp.position, index=ordered.index(sp))
         log(f"{sp.position}: playing tone on {sp.label} ...")
         session.pulse.play_file(path, sink.name, wait=True)
 
@@ -118,8 +119,9 @@ def cmd_add(session: Session, args: argparse.Namespace) -> int:
     sp = session.add_speaker(args.address, position=args.position, name=args.name or "",
                              replace=args.replace, connect=not args.no_connect)
     say(f"added {sp.label} as {sp.position}")
-    if len(session.config.speakers) >= 2:
-        say("you have two speakers; run `soundscape up` to join them")
+    n = len(session.config.speakers)
+    if n >= 2:
+        say(f"you have {n} speakers; run `soundscape up` to join them")
     return 0
 
 
@@ -301,27 +303,44 @@ def cmd_setup(session: Session, args: argparse.Namespace) -> int:
             return _finish_setup(session, args)
         session.config.speakers = []
 
-    input("Put BOTH speakers in pairing mode (hold their Bluetooth button until it blinks), then press Enter.")
+    input("Put ALL your speakers in pairing mode (hold their Bluetooth button until it blinks), then press Enter.")
     chosen: List[Speaker] = []
-    for position in ("left", "right"):
+    index = 0
+    while True:
+        position = session.config.next_position()
         devices = session.scan(args.seconds, audio_only=True)
         devices = [d for d in devices if d.address not in {c.address for c in chosen}]
-        if not devices:
+        if not devices and index < 2:
             say("no audio devices found; scanning again for longer ...")
             devices = session.scan(args.seconds * 2, audio_only=True)
             devices = [d for d in devices if d.address not in {c.address for c in chosen}]
         if not devices:
+            if index >= 2:
+                say("no more speakers found.")
+                break
             err("still nothing. Make sure the speakers are in pairing mode and not connected to a phone.")
             return 1
-        say(f"\nwhich speaker goes on the {position.upper()}?")
+        if position in ("left", "right"):
+            say(f"\nwhich speaker goes on the {position.upper()}?")
+        else:
+            say(f"\nwhich speaker is next? (it will be called '{position}' unless you name it)")
         print_devices(devices, False)
         pick = _pick(len(devices))
         if pick is None:
+            if index >= 2:
+                break
             return 1
         dev = devices[pick - 1]
+        if position not in ("left", "right"):
+            custom = input(f"name for this speaker's spot [{position}]: ").strip()
+            if custom:
+                position = custom
         sp = session.add_speaker(dev.address, position=position, replace=True, connect=True)
         chosen.append(sp)
-        say(f" + {sp.label} connected as {position}\n")
+        index += 1
+        say(f" + {sp.label} connected as {sp.position}\n")
+        if index >= 2 and _ask("add another speaker? [y/N] ", default="n") != "y":
+            break
     return _finish_setup(session, args)
 
 
@@ -333,9 +352,10 @@ def _finish_setup(session: Session, args: argparse.Namespace) -> int:
         say("playing a low tone on LEFT, then a higher tone on RIGHT")
         play_position_tones(session)
         if _ask("did the low tone come from the speaker you want on the left? [Y/n] ", default="y") == "n":
-            for sp in session.config.speakers[:2]:
-                sp.position = "right" if sp.position == "left" else "left"
-            session.config.speakers.sort(key=lambda s: POSITIONS.index(s.position))
+            for sp in session.config.speakers:
+                if sp.position in ("left", "right"):
+                    sp.position = "right" if sp.position == "left" else "left"
+            session.config.sort()
             session.save_config()
             say("swapped left and right")
             session.up()
@@ -347,6 +367,7 @@ def _finish_setup(session: Session, args: argparse.Namespace) -> int:
         except SoundscapeError as exc:
             err(f"calibration skipped: {exc.message}" + (f"\n  hint: {exc.hint}" if exc.hint else ""))
     say("\nall set. Useful next steps:")
+    say("  soundscape add <address>    add another speaker any time")
     say("  soundscape status           what is connected and playing")
     say("  soundscape play song.mp3    play a file through both speakers")
     say("  soundscape sync             fine-tune alignment by ear   (or: sync --auto)")
@@ -399,21 +420,22 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--all", action="store_true", help="include non-audio devices")
     s.add_argument("--json", action="store_true")
 
-    s = sub.add_parser("add", help="pair/connect a speaker and remember it")
+    s = sub.add_parser("add", help="pair/connect a speaker and remember it (any number of speakers)")
     s.add_argument("address", help="Bluetooth address AA:BB:CC:DD:EE:FF")
-    s.add_argument("--position", choices=POSITIONS, help="left/right (default: first free)")
+    s.add_argument("--position", metavar="NAME",
+                   help="left, right, or any name such as kitchen (default: left, right, speaker3, ...)")
     s.add_argument("--name", help="friendly name")
     s.add_argument("--replace", action="store_true")
     s.add_argument("--no-connect", action="store_true", help="only save; do not pair/connect now")
 
     s = sub.add_parser("remove", help="forget a configured speaker")
-    s.add_argument("speaker", help="left, right, address or name")
+    s.add_argument("speaker", help="position (left, right, kitchen...), address or name")
     s.add_argument("--forget", action="store_true", help="also unpair it in BlueZ")
 
     s = sub.add_parser("up", help="connect both speakers and create the joint output")
     s.add_argument("--engine", choices=ENGINES)
     s.add_argument("--stereo", dest="stereo", action="store_true", default=None,
-                   help="left speaker plays L channel, right plays R (PipeWire engine)")
+                   help="'left' plays the L channel, 'right' the R channel; other speakers get both")
     s.add_argument("--no-stereo", dest="stereo", action="store_false", help="both speakers play full stereo")
     s.add_argument("--no-default", action="store_true", help="do not make it the default output")
     s.add_argument("--no-compensate", action="store_true", help="disable automatic latency compensation")

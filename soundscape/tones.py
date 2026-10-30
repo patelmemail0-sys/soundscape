@@ -101,26 +101,48 @@ def click_track(path: Path, seconds: float = 30.0, bpm: float = 120.0, rate: int
     return write_wav(path, mono, list(mono), rate)
 
 
-CALIBRATION_FIRST_S = 1.0
-CALIBRATION_SECOND_S = 4.0
-CALIBRATION_TOTAL_S = 6.0
-CALIBRATION_SWITCH_S = 2.5
+CALIBRATION_FIRST_S = 1.0     # first chirp
+CALIBRATION_SPACING_S = 3.0   # between consecutive chirps (one per speaker)
+CALIBRATION_TAIL_S = 2.0      # silence after the last chirp
+CALIBRATION_SECOND_S = CALIBRATION_FIRST_S + CALIBRATION_SPACING_S          # 4.0, two-speaker case
+CALIBRATION_TOTAL_S = CALIBRATION_FIRST_S + CALIBRATION_SPACING_S + CALIBRATION_TAIL_S  # 6.0, two speakers
+CALIBRATION_SWITCH_S = CALIBRATION_FIRST_S + CALIBRATION_SPACING_S / 2      # 2.5, two speakers
 
 
-def calibration_track(path: Path, rate: int = RATE) -> Path:
-    """Two identical chirps 3 s apart on both channels. The calibrator mutes one speaker for
-    the first chirp and the other for the second, so the gap between arrivals at a microphone
-    minus 3 s is exactly the sync error between the speakers."""
-    mono = silence(CALIBRATION_TOTAL_S, rate)
+def calibration_times(count: int) -> List[float]:
+    """When chirp k is sent, in track seconds."""
+    return [CALIBRATION_FIRST_S + k * CALIBRATION_SPACING_S for k in range(count)]
+
+
+def calibration_switches(count: int) -> List[float]:
+    """When to move the un-muted speaker from k to k+1 (midway between chirps)."""
+    return [CALIBRATION_FIRST_S + k * CALIBRATION_SPACING_S + CALIBRATION_SPACING_S / 2 for k in range(count - 1)]
+
+
+def calibration_length(count: int) -> float:
+    return CALIBRATION_FIRST_S + (count - 1) * CALIBRATION_SPACING_S + CALIBRATION_TAIL_S
+
+
+def calibration_track(path: Path, rate: int = RATE, count: int = 2) -> Path:
+    """``count`` identical chirps 3 s apart on both channels. The calibrator un-mutes one
+    speaker per chirp, so the arrival gaps at a microphone minus the nominal spacing are
+    exactly the sync errors between the speakers."""
+    mono = silence(calibration_length(count), rate)
     burst = chirp(rate)
-    place(mono, burst, CALIBRATION_FIRST_S, rate)
-    place(mono, burst, CALIBRATION_SECOND_S, rate)
+    for at in calibration_times(count):
+        place(mono, burst, at, rate)
     return write_wav(path, mono, list(mono), rate)
 
 
-def position_tone(path: Path, position: str, rate: int = RATE) -> Path:
-    """Distinct pitch per position so the user can tell which speaker is which."""
-    freq = {"left": 440.0, "right": 660.0, "third": 880.0, "fourth": 1100.0}.get(position, 523.0)
+TONE_SCALE = [440.0, 660.0, 880.0, 1100.0, 1320.0, 1540.0, 1760.0, 1980.0, 2200.0, 2420.0]
+
+
+def position_tone(path: Path, position: str, rate: int = RATE, index: int = 0) -> Path:
+    """Distinct pitch per speaker so the user can tell which is which: left lowest, right
+    next, then rising by position order."""
+    fixed = {"left": 0, "right": 1, "third": 2, "fourth": 3}
+    step = fixed.get(position, max(index, 2 if index >= 2 else index))
+    freq = TONE_SCALE[min(step, len(TONE_SCALE) - 1)]
     pattern = silence(0.1, rate)
     for _ in range(2):
         pattern += sine(freq, 0.18, rate) + silence(0.08, rate)

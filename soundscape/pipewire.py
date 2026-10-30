@@ -39,7 +39,8 @@ class OutputPlan:
 
     @property
     def delay_node_name(self) -> str:
-        return f"soundscape_{self.position}_delay"
+        slug = re.sub(r"[^a-z0-9]+", "_", self.position.lower())
+        return f"soundscape_{slug}_delay"
 
     @property
     def channel_positions(self) -> Optional[Sequence[str]]:

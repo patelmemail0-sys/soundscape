@@ -116,22 +116,26 @@ ensure_up(): no-op when healthy; rebuild when a speaker's sink vanished (used by
 set_offset(): update config, normalise, push every speaker's delay to the running engine
 ```
 
-Config lives in `$XDG_CONFIG_HOME/soundscape/config.json` (`config.Config`): speakers with
-position, friendly name, `offset_ms` (extra delay on *that* speaker) and optional volume trim,
+Config lives in `$XDG_CONFIG_HOME/soundscape/config.json` (`config.Config`): any number of
+speakers, each with a position name (`left`/`right` are special for stereo split; anything
+else is free-form, defaulting to `speaker3`, `speaker4`, ...), friendly name, `offset_ms` (extra delay on *that* speaker) and optional volume trim,
 plus engine choice and the flags behind `up`'s options.
 
 ### `sync.Calibrator`
-*Microphone mode*: generates a 6 s track with identical chirps at 1.0 s and 4.0 s, starts
-`parec` on the microphone, mutes speaker B, plays the track through the `soundscape` sink,
-swaps the mutes at 2.5 s, and un-mutes everything afterwards. Both chirps travel the exact
-same pipeline, so startup jitter of `paplay` cancels out and the arrival gap minus 3.000 s
-is the inter-speaker error. `dsp.measure_gap` cross-correlates the recording with the chirp
-(FFT, numpy if present, pure Python otherwise), refines each peak parabolically for
-sub-sample precision, and reports a confidence (peak over window RMS) that must exceed 4
-before anything is applied. The early speaker is then delayed by the gap.
+*Microphone mode*: generates a track with one identical chirp per speaker, 3 s apart
+(1.0 s, 4.0 s, 7.0 s, ...), starts recording on the microphone, un-mutes only speaker 0,
+plays the track through the Soundscape sink, moves the un-muted speaker to the next one
+midway between chirps, and un-mutes everything afterwards. Every chirp travels the exact
+same pipeline, so startup jitter of the player cancels out and each arrival gap minus the
+nominal spacing is that speaker's lag relative to speaker 0. `dsp.locate` cross-correlates the
+recording with the chirp (FFT, numpy if present, pure Python otherwise), refines each peak
+parabolically for sub-sample precision, and reports a confidence (peak over window RMS) that
+must exceed 4 before anything is applied. Every speaker is then delayed by
+``max(lag) - lag`` so all of them wait for the slowest one.
 
-*By-ear mode*: loops a click track and nudges trims live from the keyboard; a negative nudge
-on one speaker is turned into a positive delay on the other so delays never go negative.
+*By-ear mode*: loops a click track and nudges trims live from the keyboard, cycling through
+speakers with `t`; a negative nudge on one speaker is turned into a positive delay on all the
+others so delays never go negative.
 
 ### `remote.RemoteApp`
 A stdlib `ThreadingHTTPServer` with a JSON API (`/api/status`, `/api/volume`, `/api/mute`,

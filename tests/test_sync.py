@@ -37,9 +37,10 @@ def test_measure_detects_late_speaker_and_applies(session, world, runner):
     assert m.applied_to.address == MAC_A  # kitchen was early, so it gets delayed
     assert world.delays["soundscape_left_delay"] == pytest.approx(0.0238, abs=0.0003)
     assert world.delays["soundscape_right_delay"] == 0.0
-    # mutes were toggled and restored
-    mute_calls = [c for c in runner.calls if c[:2] == ["pactl", "set-sink-mute"]]
-    assert mute_calls[0][2] == world.bt_sink_name(MAC_B) and mute_calls[0][3] == "1"
+    # mutes were toggled (speaker A solo first, then B) and restored
+    mute_calls = [c[2:] for c in runner.calls if c[:2] == ["pactl", "set-sink-mute"]]
+    assert mute_calls[:2] == [[world.bt_sink_name(MAC_A), "0"], [world.bt_sink_name(MAC_B), "1"]]
+    assert mute_calls[2:4] == [[world.bt_sink_name(MAC_A), "1"], [world.bt_sink_name(MAC_B), "0"]]
     assert not world.sinks[world.bt_sink_name(MAC_A)]["mute"] and not world.sinks[world.bt_sink_name(MAC_B)]["mute"]
     play = [c for c in runner.calls if c[0] == "paplay"][0]
     assert play[1:3] == ["--device", "soundscape"]
@@ -99,9 +100,9 @@ def test_nudge_logic_moves_negative_delay_to_other_speaker(session, world):
     session.up()
     cal = Calibrator(session, log=lambda _m: None, sleep=lambda _s: None)
     a, b = session.config.speakers
-    cal._nudge(b, 5, a, b)
+    cal._nudge(b, 5, [a, b])
     assert (a.offset_ms, b.offset_ms) == (0, 5)
-    cal._nudge(b, -8, a, b)
+    cal._nudge(b, -8, [a, b])
     assert (a.offset_ms, b.offset_ms) == (3, 0)
     assert world.delays["soundscape_left_delay"] == pytest.approx(0.003)
 
