@@ -411,6 +411,16 @@ class PulseCtl:
     def default_source(self) -> str:
         return self.info().default_source
 
+    def sources(self) -> List[dict]:
+        """Microphones: ``[{"name", "description"}]`` (monitor sources excluded)."""
+        res = self._pactl("list", "short", "sources", check=False)
+        out = []
+        for line in res.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 2 and not parts[1].endswith(".monitor"):
+                out.append({"name": parts[1], "description": parts[1]})
+        return out
+
     # -- playback / capture (used by test tones and sync calibration) --------
     def play_file(self, path, sink: Optional[str] = None, wait: bool = True):
         """Play a WAV with paplay to ``sink`` (or the default sink)."""

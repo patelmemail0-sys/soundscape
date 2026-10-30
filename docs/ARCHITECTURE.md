@@ -137,10 +137,15 @@ must exceed 4 before anything is applied. Every speaker is then delayed by
 speakers with `t`; a negative nudge on one speaker is turned into a positive delay on all the
 others so delays never go negative.
 
-### `remote.RemoteApp`
-A stdlib `ThreadingHTTPServer` with a JSON API (`/api/status`, `/api/volume`, `/api/mute`,
-`/api/offset`, `/api/media`, `/api/up|down|test`) and one self-contained HTML page. The
-request handling is separated from sockets so it is unit-tested directly.
+### `remote.RemoteApp` (the dashboard)
+A stdlib `ThreadingHTTPServer` serving `ui.html` (vanilla JS, no build step) and a JSON API.
+Quick controls (`volume`, `mute`, `offset`, `media`, `config`, `remove`) apply inline under
+one lock; long operations (`up`, `down`, `scan`, `add`, `sync`, `test`) are queued on a
+single worker thread as jobs the page polls (`/api/job?id=`), with the backend's log lines
+attached to the job for live progress. The session's log callback is captured into a ring
+buffer (`/api/log`). Request handling is separated from sockets so it is unit-tested
+directly, and the page is driven end to end in headless Chromium against the emulated
+backend during development.
 
 ## Design rules
 

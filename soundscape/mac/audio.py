@@ -86,6 +86,13 @@ class MacAudio:
     def default_source(self) -> str:
         return self.info().default_source
 
+    def sources(self) -> List[dict]:
+        out = []
+        for d in self.ca.devices():
+            if d.input_channels and "blackhole" not in d.uid.lower() and not d.is_soundscape_aggregate:
+                out.append({"name": d.uid, "description": d.name})
+        return out
+
     def modules(self) -> list:  # PulseAudio concept; nothing to report here
         return []
 

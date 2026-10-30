@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence
 
 from . import __version__, tones
 from .config import ENGINES, Config, Speaker
@@ -224,9 +224,10 @@ def cmd_play(session: Session, args: argparse.Namespace) -> int:
                 loop=args.loop, shuffle=args.shuffle, volume=args.volume)
 
 
-def cmd_remote(session: Session, args: argparse.Namespace) -> int:
+def cmd_ui(session: Session, args: argparse.Namespace) -> int:
     from .remote import serve
-    serve(session, host=args.host, port=args.port, log=say, token=args.token)
+    serve(session, host=args.host, port=args.port, log=say, token=args.token,
+          open_browser=not args.no_open and args.command == "ui")
     return 0
 
 
@@ -266,25 +267,7 @@ def cmd_config(session: Session, args: argparse.Namespace) -> int:
         say(json.dumps(cfg.to_dict(), indent=2))
         return 0
     if args.action == "set":
-        if args.key not in cfg.__dataclass_fields__ or args.key in ("speakers",):  # type: ignore[attr-defined]
-            raise ConfigError(f"unknown setting {args.key!r}",
-                              "settings: " + ", ".join(k for k in cfg.__dataclass_fields__ if k != "speakers"))  # type: ignore[attr-defined]
-        current = getattr(cfg, args.key)
-        value: Any = args.value
-        try:
-            if isinstance(current, bool):
-                if str(args.value).lower() not in ("1", "true", "yes", "on", "0", "false", "no", "off"):
-                    raise ValueError(args.value)
-                value = str(args.value).lower() in ("1", "true", "yes", "on")
-            elif isinstance(current, int):
-                value = int(args.value)
-            elif isinstance(current, float):
-                value = float(args.value)
-        except ValueError:
-            raise ConfigError(f"{args.key} expects a {type(current).__name__}, got {args.value!r}") from None
-        if args.key == "engine" and value not in ENGINES:
-            raise ConfigError(f"engine must be one of {', '.join(ENGINES)}")
-        setattr(cfg, args.key, value)
+        value = cfg.set_option(args.key, args.value)
         session.save_config()
         say(f"{args.key} = {value!r}")
         if session.state():
@@ -399,7 +382,7 @@ def _finish_setup(session: Session, args: argparse.Namespace) -> int:
     say("  soundscape status           what is connected and playing")
     say("  soundscape play song.mp3    play a file through both speakers")
     say("  soundscape sync             fine-tune alignment by ear   (or: sync --auto)")
-    say("  soundscape remote           control volume and delay from your phone")
+    say("  soundscape ui               dashboard in your browser: visualize and control it all")
     say("  soundscape down             restore your normal audio output")
     return 0
 
@@ -502,10 +485,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--player", choices=("mpv", "ffplay", "paplay"))
     s.add_argument("--volume", type=int, help="player volume percent (mpv only)")
 
-    s = sub.add_parser("remote", help="web remote for your phone")
-    s.add_argument("--host", default="127.0.0.1", help="bind address (0.0.0.0 for LAN access)")
-    s.add_argument("--port", type=int, default=8787)
-    s.add_argument("--token", help="require this token (open the page with ?token=...)")
+    for name, help_text in (("ui", "open the web dashboard: visualize and control everything"),
+                            ("remote", "same dashboard, for your phone (does not open a browser)")):
+        s = sub.add_parser(name, help=help_text)
+        s.add_argument("--host", default="127.0.0.1", help="bind address (0.0.0.0 for LAN access)")
+        s.add_argument("--port", type=int, default=8787)
+        s.add_argument("--token", help="require this token (open the page with ?token=...)")
+        s.add_argument("--no-open", action="store_true", help="do not open a browser")
 
     s = sub.add_parser("daemon", help="keep the speakers joined; reconnect when they drop (for systemd)")
     s.add_argument("--interval", type=float, default=10.0, help="seconds between checks")
@@ -521,7 +507,7 @@ def build_parser() -> argparse.ArgumentParser:
 COMMANDS = {
     "setup": cmd_setup, "doctor": cmd_doctor, "scan": cmd_scan, "add": cmd_add, "remove": cmd_remove,
     "up": cmd_up, "down": cmd_down, "status": cmd_status, "volume": cmd_volume, "mute": cmd_mute,
-    "offset": cmd_offset, "sync": cmd_sync, "test": cmd_test, "play": cmd_play, "remote": cmd_remote,
+    "offset": cmd_offset, "sync": cmd_sync, "test": cmd_test, "play": cmd_play, "remote": cmd_ui, "ui": cmd_ui,
     "daemon": cmd_daemon, "config": cmd_config,
 }
 

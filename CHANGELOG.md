@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 - 2026-10-30
+
+Web dashboard.
+
+* `soundscape ui` serves a single-page dashboard and opens it in the browser: live signal
+  path diagram, per-speaker cards (state, volume, mute, tone, delay stepper), one-click
+  microphone calibration with a lag chart, scan/add speakers, settings, doctor, activity log.
+* Long operations run as background jobs with progress; quick controls apply inline.
+* JSON API under `/api/` (status, devices, sources, doctor, log, job, up, down, scan, add,
+  remove, sync, test, config, volume, mute, offset, media); optional token.
+* `Config.set_option` shared by CLI and UI; microphone source listing on both backends.
+
 ## 0.3.1 - 2026-10-30
 
 Hardening after an adversarial review, parser fuzzing and live fault injection.

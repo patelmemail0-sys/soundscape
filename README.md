@@ -215,16 +215,33 @@ soundscape up --stereo
 
 This needs the PipeWire engine on Linux or the relay engine (BlackHole) on macOS.
 
-## Phone remote
+## Dashboard
 
 ```bash
-soundscape remote --host 0.0.0.0 --port 8787 --token mysecret
+soundscape ui
 ```
 
-Open `http://<this-machine>:8787/?token=mysecret` on your phone for master and per-speaker
-volume, mute, plus/minus sync nudges, and play/pause/next (through `playerctl`). With
-`--token` every request must carry the token; without it anyone on the network can change
-volumes, so the default bind is `127.0.0.1` and Soundscape warns when you open it up.
+Opens a local web page that shows and controls everything:
+
+* the live **signal path**: your apps, the Soundscape mix, each speaker with its delay, lit
+  up when audio can flow;
+* a **card per speaker** with connection state, volume, mute, test tone and a delay stepper;
+* **calibration** with one click and a chart of each speaker's measured lag and the trim
+  that was applied;
+* **scan and add** speakers with a position name, **settings** (engine, stereo split,
+  latency compensation, default output), the **doctor** checks with fixes, and an
+  **activity log**.
+
+Scans, calibration and up/down run in the background, so the page keeps updating while
+they work. For your phone, expose it on the network with a token:
+
+```bash
+soundscape ui --host 0.0.0.0 --port 8787 --token mysecret
+```
+
+and open `http://<this-machine>:8787/?token=mysecret`. Without `--token` anyone on the
+network could change volumes, so the default bind is `127.0.0.1`. `soundscape remote` is
+the same server without opening a browser.
 
 ## Keep it running
 
@@ -268,7 +285,7 @@ soundscape offset POSITION 12.5 [--relative]
 soundscape sync [--auto] [--source SRC] [--passes N] [--no-apply]
 soundscape test [left|right]    tone on each speaker in turn
 soundscape play FILES... [--loop] [--shuffle] [--player mpv|ffplay|paplay]
-soundscape remote [--host H] [--port P] [--token T]
+soundscape ui [--host H] [--port P] [--token T] [--no-open]   dashboard (remote = same, no browser)
 soundscape daemon [--interval S] [--keep]
 soundscape config show|path|set KEY VALUE
 ```
@@ -320,7 +337,7 @@ PipeWire config is validated against PipeWire's own parser in CI when available.
 
 ## Status
 
-0.3.0. Linux and macOS backends, any number of speakers, unit-tested against emulated BlueZ, PipeWire, PulseAudio
+0.4.0. Linux and macOS backends, any number of speakers, unit-tested against emulated BlueZ, PipeWire, PulseAudio
 and CoreAudio; the Linux engine is additionally validated against a live PipeWire 1.0.5 in
 CI. Neither backend has been run against physical speakers by the author yet. The first
 thing to do with real hardware is `soundscape doctor`, then `soundscape setup`, and file an

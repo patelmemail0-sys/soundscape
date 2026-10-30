@@ -173,6 +173,37 @@ class Config:
             for s in self.speakers:
                 s.offset_ms = round(s.offset_ms - low, 3)
 
+    # -- settings ----------------------------------------------------------
+    SETTABLE = ("engine", "stereo_split", "latency_compensate", "set_default_sink", "resample_quality",
+                "pulse_resample_method", "description", "connect_timeout_s", "sink_timeout_s")
+
+    def set_option(self, key: str, raw: object) -> object:
+        """Set a scalar option from user input with type coercion; returns the stored value."""
+        if key not in self.SETTABLE:
+            raise ConfigError(f"unknown setting {key!r}", "settings: " + ", ".join(self.SETTABLE))
+        current = getattr(self, key)
+        value: object = raw
+        try:
+            if isinstance(current, bool):
+                text = str(raw).strip().lower()
+                if text not in ("1", "true", "yes", "on", "0", "false", "no", "off"):
+                    raise ValueError(raw)
+                value = text in ("1", "true", "yes", "on")
+            elif isinstance(current, int):
+                value = int(str(raw))
+            elif isinstance(current, float):
+                value = float(str(raw))
+            else:
+                value = str(raw)
+        except ValueError:
+            raise ConfigError(f"{key} expects a {type(current).__name__}, got {raw!r}") from None
+        if key == "engine" and value not in ENGINES:
+            raise ConfigError(f"engine must be one of {', '.join(ENGINES)}")
+        if key == "resample_quality" and not 0 <= int(value) <= 14:  # type: ignore[call-overload]
+            raise ConfigError("resample_quality must be between 0 and 14")
+        setattr(self, key, value)
+        return value
+
     # -- persistence -----------------------------------------------------
     def to_dict(self) -> dict:
         return asdict(self)

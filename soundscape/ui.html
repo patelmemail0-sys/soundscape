@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Soundscape</title>
+<style>
+:root{--bg:#0e1116;--panel:#161b23;--line:#262d39;--fg:#e9edf3;--mut:#8a94a6;--acc:#4fd1a5;--acc2:#6aa5ff;--warn:#f0b35a;--bad:#ef6b6b;--ok:#4fd1a5}
+@media (prefers-color-scheme: light){:root{--bg:#f4f6f9;--panel:#fff;--line:#dfe4ec;--fg:#141922;--mut:#5f6978;--acc:#0e9f73;--acc2:#2f6fe4;--warn:#b7791f;--bad:#c93c3c;--ok:#0e9f73}}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,system-ui,Segoe UI,Roboto,sans-serif}
+a{color:var(--acc2)}
+header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;display:flex;align-items:center;gap:10px}
+.dot{width:11px;height:11px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 3px rgba(239,107,107,.15)}.dot.on{background:var(--ok);box-shadow:0 0 0 3px rgba(79,209,165,.2)}
+.pill{font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.spacer{flex:1}
+main{max-width:1180px;margin:0 auto;padding:18px 20px 60px;display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:900px){main{grid-template-columns:1.2fr .8fr}.wide{grid-column:1/-1}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.panel h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 12px;display:flex;align-items:center;gap:10px}
+.panel h2 .spacer{flex:1}
+button{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer}
+button:hover{border-color:var(--acc2)}button:disabled{opacity:.5;cursor:default}
+button.pri{background:var(--acc);border-color:var(--acc);color:#07140f;font-weight:600}
+button.danger{color:var(--bad)}button.sm{padding:4px 9px;font-size:13px;border-radius:7px}
+input[type=range]{width:100%;accent-color:var(--acc)}
+input[type=text],input[type=number],select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row.between{justify-content:space-between}
+.sub{color:var(--mut);font-size:13px}.mono{font-variant-numeric:tabular-nums}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--bg)}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.badge{font-size:11px;padding:2px 7px;border-radius:6px;background:var(--line);color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.badge.left,.badge.right{background:rgba(106,165,255,.15);color:var(--acc2)}
+.st{font-size:12px}.st.ok{color:var(--ok)}.st.bad{color:var(--bad)}.st.warn{color:var(--warn)}
+.stepper{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.stepper button{border:0;border-radius:0;padding:4px 9px}.stepper span{padding:4px 10px;min-width:74px;text-align:center;background:var(--bg)}
+svg text{fill:var(--fg);font-size:12px}
+.bars{display:grid;gap:8px}.bar{display:grid;grid-template-columns:120px 1fr 90px;align-items:center;gap:10px;font-size:13px}
+.track{height:12px;background:var(--line);border-radius:6px;position:relative}
+.track i{position:absolute;top:0;bottom:0;background:var(--acc2);border-radius:6px}
+.track b{position:absolute;top:-4px;width:2px;height:20px;background:var(--fg);left:50%}
+.log{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;white-space:pre-wrap}
+.toast{position:fixed;right:18px;bottom:18px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--acc2);border-radius:12px;padding:12px 14px;max-width:380px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:none}
+.toast.show{display:block}.toast .sub{margin-top:4px;max-height:120px;overflow:auto;white-space:pre-wrap}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--acc2);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px}
+@keyframes s{to{transform:rotate(360deg)}}
+.checks div{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13.5px}.checks div:last-child{border:0}
+.checks .fix{color:var(--mut);display:block;margin-left:22px}
+.empty{color:var(--mut);font-size:13.5px;padding:8px 0}
+.tabs{display:flex;gap:6px}.tabs button.on{border-color:var(--acc2);color:var(--acc2)}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot" id="dot"></span>Soundscape <span class="pill" id="ver"></span></h1>
+  <span class="pill" id="engine">connecting...</span>
+  <span class="pill" id="platform"></span>
+  <span class="spacer"></span>
+  <button class="pri" id="btnUp" onclick="job('/api/up',{})">Bring up</button>
+  <button id="btnDown" onclick="job('/api/down',{})">Take down</button>
+  <button onclick="job('/api/test',{})">Test tones</button>
+</header>
+<main>
+  <section class="panel wide">
+    <h2>Signal path <span class="spacer"></span><span class="sub" id="pathNote"></span></h2>
+    <svg id="path" width="100%" height="200" viewBox="0 0 1000 200" preserveAspectRatio="xMidYMid meet"></svg>
+  </section>
+
+  <section class="panel">
+    <h2>Speakers <span class="spacer"></span>
+      <span class="sub mono" id="masterVal"></span>
+    </h2>
+    <div class="row" style="margin-bottom:10px">
+      <span class="sub" style="width:70px">Master</span>
+      <input type="range" min="0" max="100" id="master" style="flex:1" oninput="vol('all',this.value)">
+      <button class="sm" onclick="mute('all')">mute</button>
+    </div>
+    <div class="grid" id="speakers"></div>
+    <div class="row" style="margin-top:12px">
+      <button onclick="media('previous')">&#9664;&#9664;</button>
+      <button onclick="media('play-pause')">&#9654; / &#10074;&#10074;</button>
+      <button onclick="media('next')">&#9654;&#9654;</button>
+      <span class="sub">media keys via playerctl (Linux)</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Sync <span class="spacer"></span><span class="sub" id="syncNote"></span></h2>
+    <div class="row">
+      <select id="source"><option value="">default microphone</option></select>
+      <button class="pri" onclick="calibrate()">Calibrate with microphone</button>
+    </div>
+    <p class="sub">Plays one chirp per speaker, three seconds apart, records them with the microphone and delays everyone to match the slowest speaker. Keep the room quiet; put the mic roughly equidistant from the speakers.</p>
+    <div class="bars" id="syncBars"><div class="empty">No calibration yet. Current trims are shown on each speaker card.</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Add a speaker <span class="spacer"></span>
+      <button class="sm" onclick="scan()">Scan 10 s</button>
+    </h2>
+    <p class="sub">Put the speaker in pairing mode (hold its Bluetooth button), scan, then add it with a position: <b>left</b> and <b>right</b> are special for stereo split, anything else is a name.</p>
+    <div id="found" class="empty">Paired devices appear here after a scan.</div>
+  </section>
+
+  <section class="panel">
+    <h2>Settings <span class="spacer"></span><span class="sub">changes apply on the next Bring up</span></h2>
+    <div class="row between"><label>Engine</label><select id="cfgEngine" onchange="cfg('engine',this.value)"></select></div>
+    <div class="row between" style="margin-top:8px"><label>Stereo split (left = L channel, right = R)</label><input type="checkbox" id="cfgStereo" onchange="cfg('stereo_split',this.checked)"></div>
+    <div class="row between" style="margin-top:8px"><label>Automatic latency compensation</label><input type="checkbox" id="cfgComp" onchange="cfg('latency_compensate',this.checked)"></div>
+    <div class="row between" style="margin-top:8px"><label>Make it the default output while up</label><input type="checkbox" id="cfgDefault" onchange="cfg('set_default_sink',this.checked)"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Doctor <span class="spacer"></span><button class="sm" onclick="doctor()">Run checks</button></h2>
+    <div class="checks" id="checks"><div class="empty">Checks Bluetooth, the sound server and the tools Soundscape needs, with a fix for each problem.</div></div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Activity</h2>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+<div class="toast" id="toast"><div class="row"><span class="spin" id="toastSpin"></span><b id="toastTitle"></b></div><div class="sub" id="toastBody"></div></div>
+
+<script>
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+let status = null, jobId = null, busyPath = false;
+
+async function api(path, body) {
+  const headers = {'X-Soundscape-Token': TOKEN};
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  const r = await fetch(path, body !== undefined ? {method: 'POST', headers, body: JSON.stringify(body)} : {headers});
+  const j = await r.json().catch(() => ({error: 'bad response'}));
+  if (!r.ok) { toast(j.error || 'error', j.hint || '', false); throw new Error(j.error || 'error'); }
+  return j;
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(title, body, spinning) {
+  const t = document.getElementById('toast'); t.classList.add('show');
+  document.getElementById('toastTitle').textContent = title;
+  document.getElementById('toastBody').textContent = body || '';
+  document.getElementById('toastSpin').style.display = spinning ? 'inline-block' : 'none';
+  clearTimeout(t._timer); if (!spinning) t._timer = setTimeout(() => t.classList.remove('show'), 6000);
+}
+
+// ---------- jobs
+async function job(path, body) {
+  const r = await api(path, body || {});
+  jobId = r.job.id; toast(r.job.name, '', true); pollJob();
+  return new Promise(res => { jobWaiters.push(res); });
+}
+const jobWaiters = [];
+async function pollJob() {
+  if (!jobId) return;
+  const j = await api('/api/job?id=' + jobId);
+  const lastLines = j.log.slice(-4).join('\n');
+  if (j.state === 'running' || j.state === 'queued') { toast(j.name, lastLines, true); setTimeout(pollJob, 600); return; }
+  if (j.state === 'done') toast(j.name + ': done', lastLines, false); else toast(j.name + ' failed', (j.error || '') + (j.hint ? '\nhint: ' + j.hint : ''), false);
+  jobId = null; refresh(); refreshLog();
+  while (jobWaiters.length) jobWaiters.shift()(j);
+}
+
+// ---------- status
+async function refresh() {
+  try { status = await api('/api/status'); } catch (e) { document.getElementById('engine').textContent = 'offline'; return; }
+  render(status);
+}
+function render(s) {
+  document.getElementById('dot').className = 'dot' + (s.up ? ' on' : '');
+  document.getElementById('ver').textContent = 'v' + s.version;
+  document.getElementById('engine').textContent = s.up ? `up via ${s.engine}${s.is_default ? ' · default output' : ''}${s.stereo_split ? ' · stereo split' : ''}` : 'down';
+  document.getElementById('platform').textContent = (s.platform === 'mac' ? 'macOS · ' : 'Linux · ') + (s.server && s.server.name ? s.server.name : 'no sound server');
+  document.getElementById('btnUp').textContent = s.up ? 'Rebuild' : 'Bring up';
+  document.getElementById('btnDown').disabled = !s.up;
+  if (s.volume != null && document.activeElement.id !== 'master') { document.getElementById('master').value = s.volume; document.getElementById('masterVal').textContent = s.volume + '%' + (s.muted ? ' muted' : ''); }
+  renderSpeakers(s); renderPath(s); renderSettings(s); renderSync(s.last_sync);
+  if (s.job && !jobId) { jobId = s.job.id; pollJob(); }
+}
+function renderSpeakers(s) {
+  const box = document.getElementById('speakers');
+  if (!s.speakers.length) { box.innerHTML = '<div class="empty">No speakers configured yet. Scan and add at least two below.</div>'; return; }
+  for (const sp of s.speakers) {
+    const id = 'sp-' + sp.address.replace(/:/g, '');
+    let el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div'); el.className = 'card'; el.id = id;
+      el.innerHTML = `
+        <h3><span class="badge ${esc(sp.position)}">${esc(sp.position)}</span><span class="name"></span><span class="spacer"></span><span class="st"></span></h3>
+        <div class="sub sink"></div>
+        <div class="row" style="margin-top:8px"><input type="range" min="0" max="100" class="v" style="flex:1" oninput="vol('${sp.address}',this.value)"><span class="mono vv" style="width:40px;text-align:right"></span></div>
+        <div class="row between" style="margin-top:8px">
+          <span class="sub">delay</span>
+          <span class="stepper"><button onclick="off('${sp.address}',-5)">-5</button><button onclick="off('${sp.address}',-1)">-1</button><span class="mono o"></span><button onclick="off('${sp.address}',1)">+1</button><button onclick="off('${sp.address}',5)">+5</button></span>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="sm" onclick="mute('${sp.address}')">mute</button>
+          <button class="sm" onclick="job('/api/test',{target:'${sp.address}'})">tone</button>
+          <span class="spacer"></span>
+          <button class="sm danger" onclick="removeSpeaker('${sp.address}','${esc(sp.name)}')">remove</button>
+        </div>`;
+      box.appendChild(el);
+    }
+    el.querySelector('.name').textContent = sp.name;
+    const st = el.querySelector('.st');
+    st.textContent = sp.connected ? (sp.muted ? 'muted' : 'connected') : (sp.paired ? 'not connected' : 'not paired');
+    st.className = 'st ' + (sp.connected ? (sp.muted ? 'warn' : 'ok') : 'bad');
+    el.querySelector('.sink').textContent = sp.sink ? sp.sink : 'no audio device yet';
+    const v = el.querySelector('.v'); if (sp.volume != null && document.activeElement !== v) { v.value = sp.volume; el.querySelector('.vv').textContent = sp.volume + '%'; }
+    el.querySelector('.o').textContent = (sp.offset_ms || 0).toFixed(1) + ' ms';
+  }
+  for (const el of [...box.children]) if (el.id && !s.speakers.some(sp => 'sp-' + sp.address.replace(/:/g, '') === el.id)) el.remove();
+}
+function renderPath(s) {
+  const svg = document.getElementById('path'); const n = s.speakers.length || 1;
+  const h = Math.max(200, 60 + n * 46); svg.setAttribute('height', h); svg.setAttribute('viewBox', `0 0 1000 ${h}`);
+  const up = s.up, col = up ? 'var(--acc)' : 'var(--line)';
+  let out = '';
+  const node = (x, y, w, label, sub, on) => `<rect x="${x}" y="${y - 24}" width="${w}" height="48" rx="12" fill="var(--bg)" stroke="${on ? 'var(--acc)' : 'var(--line)'}" stroke-width="1.5"/><text x="${x + w / 2}" y="${y - 3}" text-anchor="middle" font-weight="600">${esc(label)}</text><text x="${x + w / 2}" y="${y + 15}" text-anchor="middle" fill="var(--mut)" style="fill:var(--mut)">${esc(sub)}</text>`;
+  const mid = h / 2;
+  out += node(20, mid, 150, 'Your apps', s.is_default ? 'routed here' : (up ? 'select Soundscape output' : 'playing elsewhere'), up);
+  out += `<line x1="170" y1="${mid}" x2="260" y2="${mid}" stroke="${col}" stroke-width="3"/>`;
+  out += node(260, mid, 220, 'Soundscape', up ? `${s.engine} engine · float32 mix` : 'down', up);
+  s.speakers.forEach((sp, i) => {
+    const y = 40 + i * 46 + (h - 80 - (n - 1) * 46) / 2;
+    const on = up && sp.connected && sp.sink;
+    out += `<path d="M480 ${mid} C 560 ${mid}, 560 ${y}, 640 ${y}" fill="none" stroke="${on ? 'var(--acc)' : 'var(--line)'}" stroke-width="3"/>`;
+    const d = (sp.offset_ms || 0);
+    out += `<rect x="640" y="${y - 14}" width="96" height="28" rx="8" fill="var(--bg)" stroke="${d ? 'var(--acc2)' : 'var(--line)'}"/><text x="688" y="${y + 4}" text-anchor="middle" class="mono">+${d.toFixed(1)} ms</text>`;
+    out += `<line x1="736" y1="${y}" x2="790" y2="${y}" stroke="${on ? 'var(--acc)' : 'var(--line)'}" stroke-width="3"/>`;
+    out += node(790, y, 190, sp.name, `${sp.position}${sp.volume != null ? ' · ' + sp.volume + '%' : ''}${sp.connected ? '' : ' · offline'}`, on);
+  });
+  if (!s.speakers.length) out += `<text x="700" y="${mid}" text-anchor="middle" style="fill:var(--mut)">add speakers to see them here</text>`;
+  svg.innerHTML = out;
+  document.getElementById('pathNote').textContent = up ? (s.manual_delays === false ? 'no manual delays on this engine' : 'drift-corrected, latency-compensated, delays sample-accurate') : '';
+}
+function renderSettings(s) {
+  const c = s.config; const sel = document.getElementById('cfgEngine');
+  if (sel.options.length !== s.engines.length) sel.innerHTML = s.engines.map(e => `<option value="${e}">${e}</option>`).join('');
+  if (document.activeElement !== sel) sel.value = c.engine;
+  document.getElementById('cfgStereo').checked = !!c.stereo_split;
+  document.getElementById('cfgComp').checked = !!c.latency_compensate;
+  document.getElementById('cfgDefault').checked = !!c.set_default_sink;
+}
+function renderSync(m) {
+  const box = document.getElementById('syncBars');
+  if (!m) return;
+  const max = Math.max(5, ...m.speakers.map(x => Math.abs(x.lag_ms)));
+  box.innerHTML = m.speakers.map(x => {
+    const pct = 50 + (x.lag_ms / max) * 45; const left = Math.min(50, pct), w = Math.abs(pct - 50);
+    return `<div class="bar"><span>${esc(x.name)}</span><div class="track"><b></b><i style="left:${left}%;width:${w}%"></i></div><span class="mono sub">${x.lag_ms >= 0 ? '+' : ''}${x.lag_ms.toFixed(1)} ms → trim ${x.offset_ms.toFixed(1)}</span></div>`;
+  }).join('') + `<div class="sub">measured ${new Date(m.at * 1000).toLocaleTimeString()} · confidence ${m.confidence >= 99 ? 'very high' : m.confidence.toFixed(1)} · spread ${m.spread_ms.toFixed(1)} ms (relative to ${esc(m.speakers[0].name)})</div>`;
+  document.getElementById('syncNote').textContent = m.spread_ms < 1 ? 'in sync' : 'trims applied';
+}
+
+// ---------- controls
+const vt = {};
+function vol(t, v) { clearTimeout(vt[t]); vt[t] = setTimeout(() => api('/api/volume', {target: t, percent: +v}).then(refresh), 150); }
+function off(t, d) { api('/api/offset', {target: t, delta_ms: d}).then(refresh); }
+function mute(t) { api('/api/mute', {target: t, toggle: true}).then(refresh); }
+function media(a) { api('/api/media', {action: a}).then(r => { if (r.message) toast('media', r.message, false); }); }
+function cfg(k, v) { api('/api/config', {key: k, value: v}).then(r => { if (r.note) toast(k + ' saved', r.note, false); refresh(); }); }
+async function removeSpeaker(addr, name) { if (!confirm(`Remove ${name} from Soundscape?`)) return; await api('/api/remove', {target: addr}); refresh(); }
+async function calibrate() {
+  const source = document.getElementById('source').value;
+  const j = await job('/api/sync', {source});
+  if (j.state === 'done') renderSync(j.result);
+}
+async function scan() {
+  const j = await job('/api/scan', {seconds: 10});
+  if (j.state !== 'done') return;
+  const known = new Set((status?.speakers || []).map(s => s.address));
+  const list = j.result.filter(d => !known.has(d.address));
+  const box = document.getElementById('found');
+  if (!list.length) { box.innerHTML = '<div class="empty">Nothing new found. Make sure the speaker is in pairing mode and not connected to a phone.</div>'; return; }
+  box.className = 'grid';
+  box.innerHTML = list.map(d => `<div class="card"><h3>${esc(d.name)}<span class="spacer"></span><span class="st ${d.connected ? 'ok' : d.paired ? 'warn' : ''}">${d.connected ? 'connected' : d.paired ? 'paired' : 'new'}</span></h3>
+    <div class="sub mono">${esc(d.address)}</div>
+    <div class="row" style="margin-top:8px"><input type="text" placeholder="position (left, right, kitchen...)" id="pos-${d.address.replace(/:/g,'')}" style="flex:1"><button class="pri sm" onclick="addSpeaker('${d.address}')">Add</button></div></div>`).join('');
+}
+async function addSpeaker(addr) {
+  const pos = document.getElementById('pos-' + addr.replace(/:/g, '')).value.trim();
+  const j = await job('/api/add', {address: addr, position: pos || null});
+  if (j.state === 'done') { document.getElementById('found').innerHTML = '<div class="empty">Added. Scan again to add another, or Bring up.</div>'; }
+}
+async function doctor() {
+  const box = document.getElementById('checks'); box.innerHTML = '<div class="empty"><span class="spin"></span> running checks...</div>';
+  const checks = await api('/api/doctor');
+  const sym = {ok: '✓', warn: '!', fail: '✕'}, cls = {ok: 'ok', warn: 'warn', fail: 'bad'};
+  box.innerHTML = checks.map(c => `<div><span class="st ${cls[c.status]}" style="width:14px">${sym[c.status]}</span><span>${esc(c.title)}${c.detail ? ' <span class="sub">· ' + esc(c.detail) + '</span>' : ''}${c.fix && c.status !== 'ok' ? '<span class="fix">fix: ' + esc(c.fix) + '</span>' : ''}</span></div>`).join('');
+}
+async function refreshLog() {
+  const lines = await api('/api/log?n=60').catch(() => []);
+  const el = document.getElementById('log');
+  el.textContent = lines.map(l => new Date(l.t * 1000).toLocaleTimeString() + '  ' + l.msg).join('\n') || 'no activity yet';
+  el.scrollTop = el.scrollHeight;
+}
+async function loadSources() {
+  const src = await api('/api/sources').catch(() => []);
+  const sel = document.getElementById('source');
+  for (const s of src) { const o = document.createElement('option'); o.value = s.name; o.textContent = s.description; sel.appendChild(o); }
+}
+refresh(); refreshLog(); loadSources();
+setInterval(refresh, 2500); setInterval(refreshLog, 5000);
+</script>
+</body>
+</html>
