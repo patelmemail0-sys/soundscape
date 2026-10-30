@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from soundscape.remote import PAGE, RemoteApp, make_handler
 from tests.conftest import MAC_A, MAC_B
 
@@ -135,11 +137,10 @@ def test_real_server_handles_concurrent_requests(session, world):
         assert 10 <= world.sinks["soundscape"]["volume"] <= 21
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/?token=t", timeout=5) as resp:
             assert b"X-Soundscape-Token" in resp.read()
-        try:
+        import urllib.error
+        with pytest.raises(urllib.error.HTTPError) as exc:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status", timeout=5)
-            assert False, "token missing should be rejected"
-        except urllib.error.HTTPError as e:
-            assert e.code == 401
+        assert exc.value.code == 401
     finally:
         httpd.shutdown()
         httpd.server_close()
