@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.2 - 2026-10-30
+
+Fixes for "only one speaker plays" on macOS.
+
+* Headset-mode detection: a Bluetooth speaker running at 8/16 kHz (hands-free profile) is
+  flagged in `status` and the dashboard; its music output is silent or degraded in that state.
+* `up` moves the Mac's default microphone off any speaker's own mic (the usual trigger for
+  headset mode) and waits up to 6 s for affected speakers to return to music mode.
+* Stale public "Soundscape (both speakers)" aggregate devices are removed on every `up`.
+* Relay: output buffers are mapped from the aggregate's *active* sub-device order, speakers
+  that did not make it into the aggregate are reported, the clock master is a music-mode
+  speaker, and `status` shows the live buffer map and frames written per speaker.
+
 ## 0.4.1 - 2026-10-30
 
 First real-hardware findings (HK Onyx Studio 8 + JBL Flip 6 on a MacBook).

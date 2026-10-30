@@ -170,9 +170,10 @@ class World:
         key = mac_underscored(mac)
         return f"bluez_output.{key}.1" if self.pipewire else f"bluez_sink.{key}.a2dp_sink"
 
-    def add_sink(self, name: str, description: str, props: Dict[str, str], ports=("speaker-output",)):
+    def add_sink(self, name: str, description: str, props: Dict[str, str], ports=("speaker-output",), rate=48000):
         self.sinks[name] = {"index": self._idx(), "description": description, "volume": 100, "mute": False,
-                            "props": props, "ports": list(ports), "active_port": ports[0] if ports else None}
+                            "props": props, "ports": list(ports), "active_port": ports[0] if ports else None,
+                            "rate": rate}
         return self.sinks[name]
 
     def _ensure_bt_sink(self, mac: str):
@@ -266,7 +267,7 @@ class World:
         for name, s in self.sinks.items():
             out.append({"index": s["index"], "state": "RUNNING", "name": name, "description": s["description"],
                         "driver": "PipeWire" if self.pipewire else "module-bluez5-device.c",
-                        "sample_specification": "s16le 2ch 48000Hz", "owner_module": 4294967295, "mute": s["mute"],
+                        "sample_specification": f"s16le 2ch {s.get('rate', 48000)}Hz", "owner_module": 4294967295, "mute": s["mute"],
                         "volume": {"front-left": {"value": 65536, "value_percent": f"{s['volume']}%", "db": "0.00 dB"},
                                    "front-right": {"value": 65536, "value_percent": f"{s['volume']}%", "db": "0.00 dB"}},
                         "monitor_source": f"{name}.monitor", "properties": s["props"],

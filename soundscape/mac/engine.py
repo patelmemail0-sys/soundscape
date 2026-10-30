@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 from .. import engine as base
 from ..config import Config
@@ -26,6 +26,23 @@ from .coreaudio import AGGREGATE_UID_PREFIX
 Log = Callable[[str], None]
 
 
+def sweep_aggregates(audio: MacAudio, log: Log, keep_uid: Optional[str] = None) -> int:
+    """Destroy public Soundscape aggregate devices left behind by earlier runs. They show up in
+    the Sound menu as 'Soundscape (both speakers)' and confuse users and CoreAudio alike."""
+    removed = 0
+    for d in audio.ca.soundscape_aggregates():
+        if keep_uid and d.uid == keep_uid:
+            continue
+        try:
+            audio.ca.destroy_aggregate(d.id)
+            removed += 1
+        except AudioError as exc:
+            log(f"could not remove old aggregate {d.name}: {exc.message}")
+    if removed:
+        log(f"removed {removed} leftover Soundscape aggregate device(s)")
+    return removed
+
+
 class AggregateEngine(Engine):
     name = "aggregate"
 
@@ -37,13 +54,7 @@ class AggregateEngine(Engine):
         return f"{AGGREGATE_UID_PREFIX}{cfg.sink_name}"
 
     def _cleanup(self, uid: str) -> None:
-        for d in self.audio.ca.soundscape_aggregates():
-            if d.uid == uid:
-                try:
-                    self.audio.ca.destroy_aggregate(d.id)
-                    self.log("removed a leftover Soundscape aggregate device")
-                except AudioError as exc:
-                    self.log(f"could not remove old aggregate: {exc.message}")
+        sweep_aggregates(self.audio, self.log)
 
     def build(self, bound: List[Bound], cfg: Config) -> EngineState:
         uid = self._uid(cfg)
@@ -57,6 +68,16 @@ class AggregateEngine(Engine):
                 raise AudioError("the aggregate device did not appear", "open Audio MIDI Setup and check for errors")
             time.sleep(0.2)
         state = EngineState(engine=self.name, sink_name=uid, device_id=agg_id)
+        active = set()
+        for sub in self.audio.ca.aggregate_subdevices(agg_id):
+            try:
+                active.add(self.audio.ca.device(sub).uid)
+            except AudioError:
+                continue
+        for b in bound:
+            if active and b.sink.name not in active:
+                self.log(f"warning: {b.speaker.label} is not active inside the aggregate device "
+                         "(sample rate mismatch or device busy); it will stay silent")
         for b in bound:
             state.outputs.append(OutputState(address=b.speaker.address, position=b.speaker.position,
                                              label=b.speaker.label, sink=b.sink.name, offset_ms=b.speaker.offset_ms,
@@ -109,6 +130,7 @@ class RelayEngine(Engine):
         blackhole = self.audio.blackhole()
         if blackhole is None:
             raise AudioError("BlackHole is not installed", BLACKHOLE_HINT)
+        sweep_aggregates(self.audio, self.log)
         for pid in base.find_pids(self.MARKER):
             if base.kill_pid(pid, self.MARKER):
                 self.log(f"stopped a stray relay process (pid {pid})")
@@ -116,7 +138,8 @@ class RelayEngine(Engine):
         argv = [sys.executable, "-m", "soundscape.mac.ioproc", "--socket", self.socket_path,
                 "--input", blackhole.uid, "--name", cfg.description,
                 "--uid", f"{AGGREGATE_UID_PREFIX}{cfg.sink_name}.relay"]
-        for b in bound:
+        ordered = sorted(bound, key=lambda b: b.sink.headset_mode)  # a music-mode speaker drives the clock
+        for b in ordered:
             argv += ["--output", f"{b.speaker.position}:{b.sink.name}:{b.speaker.offset_ms:.3f}"]
         if cfg.stereo_split:
             argv.append("--stereo")
@@ -185,6 +208,15 @@ class RelayEngine(Engine):
             return self._send("ping") == "pong"
         except AudioError:
             return False
+
+    def describe(self, state: EngineState) -> Optional[dict]:
+        """Live layout from the relay process (which buffer feeds which speaker, frames written)."""
+        import json
+        try:
+            reply = self._send("status")
+            return json.loads(reply)
+        except (AudioError, ValueError):
+            return None
 
     def set_offset(self, state: EngineState, address: str, offset_ms: float) -> None:
         out = state.output_for(address)

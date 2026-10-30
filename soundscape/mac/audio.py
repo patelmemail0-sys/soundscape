@@ -86,6 +86,20 @@ class MacAudio:
     def default_source(self) -> str:
         return self.info().default_source
 
+    def default_source_address(self) -> Optional[str]:
+        """Bluetooth address of the current default input, if it is a Bluetooth device."""
+        try:
+            d = self.ca.device(self.ca.default_input())
+        except HALError:
+            return None
+        return d.bluetooth_address
+
+    def set_default_source(self, name: str) -> None:
+        d = self.ca.device_by_uid(name)
+        if d is None:
+            raise AudioError(f"no input device named {name}")
+        self.ca.set_default_input(d.id)
+
     def sources(self) -> List[dict]:
         out = []
         for d in self.ca.devices():

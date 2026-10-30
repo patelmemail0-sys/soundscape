@@ -75,7 +75,15 @@ def print_status(status: dict) -> None:
         link = "connected" if sp["connected"] else ("paired, not connected" if sp["paired"] else "not paired")
         sink = sp["sink"] or "no sink"
         vol = f"{sp['volume']}%" if sp.get("volume") is not None else "-"
-        say(f"  {sp['position']:<6} {sp['name']:<28} {sp['address']}  {link:<22} {sink}  vol {vol}  delay +{sp['offset_ms']:.1f} ms")
+        mode = "  HEADSET MODE (music muted)" if sp.get("mode") == "headset" else ""
+        say(f"  {sp['position']:<6} {sp['name']:<28} {sp['address']}  {link:<22} {sink}  vol {vol}  delay +{sp['offset_ms']:.1f} ms{mode}")
+    if status.get("default_input_is_speaker"):
+        say("warning: the system microphone is one of the speakers; recording from it silences that speaker. "
+            "`soundscape up` moves it to the built-in mic.")
+    detail = status.get("engine_detail")
+    if detail and isinstance(detail, dict) and detail.get("buffer_map") is not None:
+        written = ", ".join(f"{o['position']}={o.get('frames_written', 0)}" for o in detail.get("outputs", []))
+        say(f"relay: buffers {detail['buffer_map']}  frames written {written}")
 
 
 def print_devices(devices, show_all: bool) -> None:

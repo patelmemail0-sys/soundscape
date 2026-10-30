@@ -106,6 +106,9 @@ class FakeHAL:
         if obj == ca.kAudioObjectSystemObject and selector == ca.kAudioHardwarePropertyDefaultOutputDevice:
             self.default_output = struct.unpack("I", data)[0]
             return
+        if obj == ca.kAudioObjectSystemObject and selector == ca.kAudioHardwarePropertyDefaultInputDevice:
+            self.default_input = struct.unpack("I", data)[0]
+            return
         if obj == ca.kAudioObjectSystemObject and selector == ca.kAudioHardwarePropertyDefaultSystemOutputDevice:
             return
         if (obj, selector, scope, element) not in self.props and selector not in (ca.kAudioDevicePropertyBufferFrameSize,):

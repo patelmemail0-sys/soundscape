@@ -157,6 +157,7 @@ class Session:
             self._down()
         self.log(f"sound server: {self.server().flavour} {self.server().server_version}".rstrip())
         bound = self.connect_speakers()
+        bound = self._protect_a2dp(bound)
         engine = self.engine()
         self.log(f"building virtual output '{self.config.sink_name}' with the {engine.name} engine ...")
         state = engine.build(bound, self.config)
@@ -165,6 +166,51 @@ class Session:
         self.save_config()
         self.log(f"ready: '{self.config.sink_name}' plays through {', '.join(b.speaker.label for b in bound)}")
         return state
+
+    HEADSET_RECOVERY_S = 6.0
+
+    def _protect_a2dp(self, bound: List[Bound]) -> List[Bound]:
+        """If the system's default microphone is one of the speakers, any recording flips that
+        speaker into headset mode and silences its music. Point the default input elsewhere,
+        then give speakers that are in headset mode a few seconds to come back to music mode."""
+        macs = {b.speaker.address for b in bound}
+        get_addr = getattr(self.pulse, "default_source_address", None)
+        if get_addr is not None:
+            try:
+                addr = get_addr()
+            except SoundscapeError:
+                addr = None
+            if addr and addr.upper() in macs:
+                mic = self.pulse.pick_microphone(list(macs))
+                if mic:
+                    try:
+                        self.pulse.set_default_source(mic)
+                        self.log(f"the Mac's default microphone was a speaker's own mic; switched it to {mic} so the "
+                                 "speaker stays in music (A2DP) mode")
+                    except SoundscapeError as exc:
+                        self.log(f"could not change the default microphone: {exc.message}")
+                else:
+                    self.log("warning: the Mac's default microphone is one of the speakers; recording from it will "
+                             "silence that speaker. Pick the built-in mic in System Settings > Sound > Input")
+        if not any(b.sink.headset_mode for b in bound):
+            return bound
+        deadline = time.monotonic() + self.HEADSET_RECOVERY_S
+        while True:
+            refreshed = []
+            for b in bound:
+                sink = self.pulse.bluetooth_sink(b.speaker.address) or b.sink
+                refreshed.append(Bound(b.speaker, sink))
+            stuck = [b for b in refreshed if b.sink.headset_mode]
+            if not stuck:
+                self.log("all speakers back in music (A2DP) mode")
+                return refreshed
+            if time.monotonic() >= deadline:
+                for b in stuck:
+                    self.log(f"warning: {b.speaker.label} is in headset mode ({b.sink.sample_rate or '?'} Hz); its music "
+                             "output is muted or degraded until nothing records from its microphone. Check System "
+                             "Settings > Sound > Input, and apps with microphone access (browser, FaceTime, Zoom)")
+                return refreshed
+            self._sleep(0.5)
 
     def _apply_levels(self, bound: List[Bound]) -> None:
         """Soundscape never limits a speaker: every speaker runs at its own 100% (its physical
@@ -345,7 +391,21 @@ class Session:
                 "volume": sink.volume_percent if sink else None,
                 "muted": sink.mute if sink else None,
                 "offset_ms": sp.offset_ms,
+                "sample_rate": sink.sample_rate if sink else None,
+                "mode": ("headset" if sink.headset_mode else "music") if sink else None,
             })
+        get_addr = getattr(self.pulse, "default_source_address", None)
+        if get_addr:
+            try:
+                addr = get_addr()
+                out["default_input_is_speaker"] = bool(addr and addr.upper() in {sp.address for sp in self.config.speakers})
+            except SoundscapeError:
+                pass
+        if state and hasattr(self.engine(state), "describe"):
+            try:
+                out["engine_detail"] = self.engine(state).describe(state)  # type: ignore[attr-defined]
+            except SoundscapeError:
+                out["engine_detail"] = None
         return out
 
     # -- discovery helpers -------------------------------------------------

@@ -273,6 +273,9 @@ class CoreAudio:
     def default_input(self) -> int:
         return self._u32(kAudioObjectSystemObject, kAudioHardwarePropertyDefaultInputDevice)
 
+    def set_default_input(self, device_id: int) -> None:
+        self.hal.set_raw(kAudioObjectSystemObject, kAudioHardwarePropertyDefaultInputDevice, struct.pack("I", device_id))
+
     def set_default_output(self, device_id: int, system_sounds_too: bool = True) -> None:
         data = struct.pack("I", device_id)
         self.hal.set_raw(kAudioObjectSystemObject, kAudioHardwarePropertyDefaultOutputDevice, data)

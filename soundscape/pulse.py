@@ -46,6 +46,23 @@ class Sink:
     monitor_source: str = ""
 
     @property
+    def sample_rate(self) -> Optional[int]:
+        for text in (self.properties.get("sample_rate", ""), self.sample_spec):
+            m = re.search(r"(\d{4,6})\s*Hz", text) or re.fullmatch(r"\s*(\d{4,6})\s*", text or "")
+            if m:
+                return int(m.group(1))
+        return None
+
+    @property
+    def headset_mode(self) -> bool:
+        """Bluetooth speakers in the hands-free profile run at 8 or 16 kHz: music is silent or
+        phone quality there. It happens when something records from the speaker's own mic."""
+        rate = self.sample_rate
+        profile = (self.properties.get("api.bluez5.profile") or self.properties.get("bluetooth.protocol") or "").lower()
+        return bool(self.bluetooth_address) and ((rate is not None and rate < 32000) or "hfp" in profile or "hsp" in profile
+                                                 or "headset" in profile)
+
+    @property
     def bluetooth_address(self) -> Optional[str]:
         for key in ("api.bluez5.address", "device.string", "bluetooth.address"):
             value = self.properties.get(key, "")
