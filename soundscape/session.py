@@ -124,7 +124,27 @@ class Session:
             self._sleep(0.5)
 
     # -- lifecycle -------------------------------------------------------
+    def _lock(self):
+        """One lifecycle command at a time per state dir (two concurrent `up`s would spawn two engines)."""
+        import fcntl
+        self.paths.ensure()
+        fh = open(self.paths.state_dir / "lock", "w")
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fh.close()
+            raise ConfigError("another soundscape command is already changing the setup",
+                              "wait for it to finish (or stop the daemon) and try again") from None
+        return fh
+
     def up(self, rebuild: bool = True) -> EngineState:
+        lock = self._lock()
+        try:
+            return self._up(rebuild)
+        finally:
+            lock.close()
+
+    def _up(self, rebuild: bool = True) -> EngineState:
         if len(self.config.speakers) < 2:
             raise ConfigError(f"{len(self.config.speakers)} speaker(s) configured; Soundscape needs at least two",
                               "run `soundscape setup` or `soundscape add <address> --position right`")
@@ -134,7 +154,7 @@ class Session:
             if not rebuild and self.engine(existing).alive(existing):
                 self.log("already up")
                 return existing
-            self.down()
+            self._down()
         self.log(f"sound server: {self.server().flavour} {self.server().server_version}".rstrip())
         bound = self.connect_speakers()
         engine = self.engine()
@@ -152,6 +172,13 @@ class Session:
         return state
 
     def down(self) -> bool:
+        lock = self._lock()
+        try:
+            return self._down()
+        finally:
+            lock.close()
+
+    def _down(self) -> bool:
         state = self.state()
         if state is None:
             return False
@@ -166,19 +193,30 @@ class Session:
     def ensure_up(self) -> EngineState:
         """Used by the daemon: reconnect and rebuild only when something is actually wrong."""
         state = self.state()
-        if state and self.engine(state).alive(state):
-            missing = [o for o in state.outputs if self.pulse.sink(o.sink) is None]
-            if not missing:
+        if state:
+            problems = self.engine(state).missing(state)
+            if not problems:
                 return state
-            self.log(f"lost {', '.join(o.label for o in missing)}; rebuilding")
+            self.log(f"lost {', '.join(problems)}; rebuilding")
         return self.up(rebuild=True)
 
     # -- live controls ---------------------------------------------------
+    MAX_OFFSET_MS = 1000.0
+
     def set_offset(self, selector: str, offset_ms: float, relative: bool = False) -> Speaker:
         sp = self.config.require(selector)
+        if offset_ms != offset_ms or abs(offset_ms) > self.MAX_OFFSET_MS:  # NaN or absurd
+            raise ConfigError(f"offset {offset_ms} ms is out of range",
+                              f"use a value between -{self.MAX_OFFSET_MS:.0f} and {self.MAX_OFFSET_MS:.0f} ms")
+        previous = [s.offset_ms for s in self.config.speakers]
         new = sp.offset_ms + offset_ms if relative else offset_ms
         sp.offset_ms = round(new, 3)
         self.config.normalize_offsets()
+        if any(s.offset_ms > self.MAX_OFFSET_MS for s in self.config.speakers):
+            for s, old in zip(self.config.speakers, previous):
+                s.offset_ms = old
+            raise ConfigError("that trim would push another speaker past the 1000 ms maximum",
+                              "reset with `soundscape offset <speaker> 0` and try smaller steps")
         state = self.state()
         if state:
             engine = self.engine(state)

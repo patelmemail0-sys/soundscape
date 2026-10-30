@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.1 - 2026-10-30
+
+Hardening after an adversarial review, parser fuzzing and live fault injection.
+
+* macOS relay: `--output` specs with the colon that device UIDs contain are parsed correctly
+  (the relay died on start-up before); the loopback's own output stream is silenced instead of
+  receiving speaker audio (feedback); control protocol accepts UIDs with spaces.
+* macOS: process checks no longer rely on `/proc` (which macOS lacks), so `status`, the daemon
+  and stray-relay cleanup work; mute emulation keeps volume levels through calibration;
+  aggregate sub-device lookup uses the id list; cheaper device lookups.
+* Calibration playback goes through the audio backend (afplay on macOS).
+* Health check: when a speaker drops and comes back on its own, the daemon notices the missing
+  delay filter or re-created sink and rebuilds; verified against live PipeWire.
+* Positions with hyphens produce matching PipeWire node names; test tones never collide.
+* Parsers tolerate truncated or malformed tool output; temp recordings are cleaned up;
+  offsets are range-checked; one lifecycle command at a time (lock); friendlier CLI errors.
+* State files from other versions load safely.
+
 ## 0.3.0 - 2026-10-30
 
 Any number of speakers.

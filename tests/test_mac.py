@@ -91,9 +91,11 @@ class FakeHAL:
                 return struct.pack("I", self.default_output)
             if selector == ca.kAudioHardwarePropertyDefaultInputDevice:
                 return struct.pack("I", self.default_input)
-        if selector == ca.kAudioAggregateDevicePropertyFullSubDeviceList and obj in self.aggregates:
+        if selector == ca.kAudioAggregateDevicePropertyActiveSubDeviceList and obj in self.aggregates:
             subs = [self.id_for_uid(u) for u in self.aggregates[obj]["subs"]]
             return struct.pack(f"{len(subs)}I", *subs)
+        if selector == ca.kAudioAggregateDevicePropertyFullSubDeviceList and obj in self.aggregates:
+            return struct.pack("Q", 0xDEADBEEF)  # a CFArrayRef pointer, never a list of ids
         try:
             return self.props[(obj, selector, scope, element)]
         except KeyError:
@@ -472,15 +474,18 @@ def test_mixer_stereo_split_and_channel_adapt():
 
 
 def test_mixer_process_writes_output_buffers():
-    m = Mixer(rate=1000, outputs=[Output(UID_A, "left"), Output(UID_B, "right")])
+    m = Mixer(rate=1000, outputs=[Output(UID_A, "left"), Output(UID_B, "right")], skip_outputs=1)
     m.set_delay("right", 1)
-    src = ctypes.create_string_buffer(frames_bytes([(1, 1), (2, 2)]))
+    src = ctypes.create_string_buffer(frames_bytes([(1, 1), (2, 2)]), 16)
+    out_bh = ctypes.create_string_buffer(frames_bytes([(9, 9), (9, 9)]), 16)  # BlackHole's own output stream
     out_a = ctypes.create_string_buffer(16)
     out_b = ctypes.create_string_buffer(16)
-    m.process([(2, 16, ctypes.addressof(src))], [(2, 16, ctypes.addressof(out_a)), (2, 16, ctypes.addressof(out_b))])
+    m.process([(2, 16, ctypes.addressof(src))],
+              [(2, 16, ctypes.addressof(out_bh)), (2, 16, ctypes.addressof(out_a)), (2, 16, ctypes.addressof(out_b))])
+    assert struct.unpack("<4f", out_bh.raw) == (0, 0, 0, 0)  # never fed back into the loopback
     assert struct.unpack("<4f", out_a.raw) == (1, 1, 2, 2)
     assert struct.unpack("<4f", out_b.raw) == (0, 0, 1, 1)
-    m.process([], [(2, 16, ctypes.addressof(out_a))])  # no input: still writes (history) without crashing
+    m.process([], [(2, 16, ctypes.addressof(out_bh)), (2, 16, ctypes.addressof(out_a))])  # fewer buffers than outputs: no crash
 
 
 def test_control_server_commands(tmp_path):
@@ -521,6 +526,42 @@ def test_short_socket_path():
     long = "/private/var/folders/" + "x" * 120 + "/relay.sock"
     out = short_socket_path(long)
     assert out.startswith("/tmp/soundscape-") and len(out) < 60
+
+
+def test_output_spec_parsing_handles_uid_colons():
+    from soundscape.mac.ioproc import parse_output_spec
+    out = parse_output_spec(f"left:{UID_A}:12.5")
+    assert out.uid == UID_A and out.position == "left" and out.delay_ms == 12.5
+    assert parse_output_spec("kitchen:BlackHole2ch_UID:0").uid == "BlackHole2ch_UID"
+    with pytest.raises(ValueError):
+        parse_output_spec("left::1")
+    with pytest.raises(ValueError):
+        parse_output_spec("left:uid:notanumber")
+
+
+def test_control_server_delay_accepts_uids_with_spaces():
+    m = Mixer(rate=1000, outputs=[Output("AppleUSBAudioEngine:Blue Yeti:1", "left")])
+    srv = ControlServer.__new__(ControlServer)
+    srv.mixer, srv.running, srv.on_quit = m, True, lambda: None
+    assert srv.handle("delay AppleUSBAudioEngine:Blue Yeti:1 7").startswith("ok 7.000 7")
+    assert srv.handle("delay left 3").startswith("ok 3.000 3")
+    assert srv.handle("delay").startswith("err")
+
+
+def test_mute_emulation_keeps_levels_through_solo_sequence(runner):
+    """Calibration mutes/unmutes repeatedly; devices without a mute control must end at their original volume."""
+    hal = make_hal()
+    audio = MacAudio(runner, coreaudio=ca.CoreAudio(hal))
+    audio.set_volume(UID_B, 80)  # Living Room has no mute control
+    audio.set_mute(UID_B, False)  # unmuting something we never muted: no change
+    assert audio.get_volume(UID_B) == 80
+    audio.set_mute(UID_B, True)
+    audio.set_mute(UID_B, True)  # second mute must not overwrite the saved level with 0
+    assert audio.get_volume(UID_B) == 0
+    audio.set_mute(UID_B, False)
+    assert audio.get_volume(UID_B) == 80
+    audio.set_mute(UID_B, False)
+    assert audio.get_volume(UID_B) == 80
 
 
 def test_ioproc_parser():

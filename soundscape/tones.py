@@ -7,7 +7,7 @@ import struct
 import wave
 from array import array
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 RATE = 48000
 
@@ -137,11 +137,28 @@ def calibration_track(path: Path, rate: int = RATE, count: int = 2) -> Path:
 TONE_SCALE = [440.0, 660.0, 880.0, 1100.0, 1320.0, 1540.0, 1760.0, 1980.0, 2200.0, 2420.0]
 
 
-def position_tone(path: Path, position: str, rate: int = RATE, index: int = 0) -> Path:
+FIXED_SLOTS = {"left": 0, "right": 1, "third": 2, "fourth": 3}
+
+
+def tone_slots(positions: Sequence[str]) -> dict:
+    """Pitch slot per position: left/right keep their slots, free names fill the rest in order."""
+    slots = {p: FIXED_SLOTS[p] for p in positions if p in FIXED_SLOTS}
+    used = set(slots.values())
+    nxt = 2
+    for p in positions:
+        if p in slots:
+            continue
+        while nxt in used:
+            nxt += 1
+        slots[p] = nxt
+        used.add(nxt)
+    return slots
+
+
+def position_tone(path: Path, position: str, rate: int = RATE, index: int = 0, slot: Optional[int] = None) -> Path:
     """Distinct pitch per speaker so the user can tell which is which: left lowest, right
-    next, then rising by position order."""
-    fixed = {"left": 0, "right": 1, "third": 2, "fourth": 3}
-    step = fixed.get(position, max(index, 2 if index >= 2 else index))
+    next, then rising by position order. ``slot`` (from :func:`tone_slots`) wins over ``index``."""
+    step = slot if slot is not None else FIXED_SLOTS.get(position, max(index, 2))
     freq = TONE_SCALE[min(step, len(TONE_SCALE) - 1)]
     pattern = silence(0.1, rate)
     for _ in range(2):

@@ -36,13 +36,14 @@ def play_position_tones(session: Session, only: Optional[str] = None, log: Log =
     """Play a distinct tone directly to each speaker so the user can tell left from right."""
     workdir = Path(tempfile.mkdtemp(prefix="soundscape-"))
     ordered = session.config.ordered()
+    slots = tones.tone_slots([sp.position for sp in ordered])
     speakers = ordered if not only else [session.config.require(only)]
     for sp in speakers:
         sink = session.pulse.bluetooth_sink(sp.address)
         if sink is None:
             log(f"{sp.position}: {sp.label} has no audio sink (not connected?)")
             continue
-        path = tones.position_tone(workdir / f"{sp.position}.wav", sp.position, index=ordered.index(sp))
+        path = tones.position_tone(workdir / f"{sp.position}.wav", sp.position, slot=slots[sp.position])
         log(f"{sp.position}: playing tone on {sp.label} ...")
         session.pulse.play_file(path, sink.name, wait=True)
 
@@ -171,7 +172,11 @@ def cmd_status(session: Session, args: argparse.Namespace) -> int:
 def cmd_volume(session: Session, args: argparse.Namespace) -> int:
     target, percent = args.target, args.percent
     if percent is None:  # `soundscape volume 40` means everything
+        if not target.lstrip("-").isdigit():
+            raise ConfigError(f"volume needs a number, got {target!r}", "examples: `volume 40`, `volume left 70`")
         percent, target = int(target), "all"
+    if not 0 <= int(percent) <= 150:
+        raise ConfigError("volume must be between 0 and 150 percent")
     sink = session.set_volume(target, int(percent))
     say(f"{sink}: {int(percent)}%")
     return 0
@@ -221,7 +226,7 @@ def cmd_play(session: Session, args: argparse.Namespace) -> int:
 
 def cmd_remote(session: Session, args: argparse.Namespace) -> int:
     from .remote import serve
-    serve(session, host=args.host, port=args.port, log=say)
+    serve(session, host=args.host, port=args.port, log=say, token=args.token)
     return 0
 
 
@@ -266,12 +271,17 @@ def cmd_config(session: Session, args: argparse.Namespace) -> int:
                               "settings: " + ", ".join(k for k in cfg.__dataclass_fields__ if k != "speakers"))  # type: ignore[attr-defined]
         current = getattr(cfg, args.key)
         value: Any = args.value
-        if isinstance(current, bool):
-            value = str(args.value).lower() in ("1", "true", "yes", "on")
-        elif isinstance(current, int):
-            value = int(args.value)
-        elif isinstance(current, float):
-            value = float(args.value)
+        try:
+            if isinstance(current, bool):
+                if str(args.value).lower() not in ("1", "true", "yes", "on", "0", "false", "no", "off"):
+                    raise ValueError(args.value)
+                value = str(args.value).lower() in ("1", "true", "yes", "on")
+            elif isinstance(current, int):
+                value = int(args.value)
+            elif isinstance(current, float):
+                value = float(args.value)
+        except ValueError:
+            raise ConfigError(f"{args.key} expects a {type(current).__name__}, got {args.value!r}") from None
         if args.key == "engine" and value not in ENGINES:
             raise ConfigError(f"engine must be one of {', '.join(ENGINES)}")
         setattr(cfg, args.key, value)
@@ -335,13 +345,31 @@ def cmd_setup(session: Session, args: argparse.Namespace) -> int:
             custom = input(f"name for this speaker's spot [{position}]: ").strip()
             if custom:
                 position = custom
-        sp = session.add_speaker(dev.address, position=position, replace=True, connect=True)
+        sp = _add_with_retry(session, dev.address, position)
+        if sp is None:
+            return 1
         chosen.append(sp)
         index += 1
         say(f" + {sp.label} connected as {sp.position}\n")
         if index >= 2 and _ask("add another speaker? [y/N] ", default="n") != "y":
             break
     return _finish_setup(session, args)
+
+
+def _add_with_retry(session: Session, address: str, position: str) -> Optional[Speaker]:
+    """Pair/connect; when that cannot be done from here (no blueutil on macOS, speaker off),
+    let the user fix it and try again instead of aborting the wizard."""
+    from .errors import BluetoothError
+    for attempt in range(3):
+        try:
+            return session.add_speaker(address, position=position, replace=True, connect=True)
+        except BluetoothError as exc:
+            err(f"could not connect: {exc.message}")
+            if exc.hint:
+                err(f"  hint: {exc.hint}")
+            if attempt == 2 or _ask("fix that and press Enter to retry, or q to quit: ", default="") == "q":
+                return None
+    return None
 
 
 def _finish_setup(session: Session, args: argparse.Namespace) -> int:
@@ -477,6 +505,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("remote", help="web remote for your phone")
     s.add_argument("--host", default="127.0.0.1", help="bind address (0.0.0.0 for LAN access)")
     s.add_argument("--port", type=int, default=8787)
+    s.add_argument("--token", help="require this token (open the page with ?token=...)")
 
     s = sub.add_parser("daemon", help="keep the speakers joined; reconnect when they drop (for systemd)")
     s.add_argument("--interval", type=float, default=10.0, help="seconds between checks")

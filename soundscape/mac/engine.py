@@ -56,10 +56,11 @@ class AggregateEngine(Engine):
             if time.monotonic() > deadline:
                 raise AudioError("the aggregate device did not appear", "open Audio MIDI Setup and check for errors")
             time.sleep(0.2)
-        state = EngineState(engine=self.name, sink_name=uid, pid=agg_id)
+        state = EngineState(engine=self.name, sink_name=uid, device_id=agg_id)
         for b in bound:
             state.outputs.append(OutputState(address=b.speaker.address, position=b.speaker.position,
-                                             label=b.speaker.label, sink=b.sink.name, offset_ms=b.speaker.offset_ms))
+                                             label=b.speaker.label, sink=b.sink.name, offset_ms=b.speaker.offset_ms,
+                                             sink_index=b.sink.index))
         if any(b.speaker.offset_ms for b in bound):
             self.log("sync trims are ignored by the aggregate engine; " + BLACKHOLE_HINT)
         if cfg.stereo_split:
@@ -81,9 +82,6 @@ class AggregateEngine(Engine):
         return self.audio.ca.device_by_uid(state.sink_name) is not None
 
     def set_offset(self, state: EngineState, address: str, offset_ms: float) -> None:
-        out = state.output_for(address)
-        if out is not None:
-            out.offset_ms = offset_ms
         raise AudioError("the aggregate engine cannot delay one speaker", BLACKHOLE_HINT + "; then `soundscape up` again")
 
 
@@ -152,7 +150,7 @@ class RelayEngine(Engine):
         for b in bound:
             state.outputs.append(OutputState(address=b.speaker.address, position=b.speaker.position,
                                              label=b.speaker.label, sink=b.sink.name, offset_ms=b.speaker.offset_ms,
-                                             delay_node=b.speaker.position))
+                                             delay_node=b.speaker.position, sink_index=b.sink.index))
         self.audio.group = [b.sink.name for b in bound]
         self._route_default(state, cfg)
         return state

@@ -10,7 +10,6 @@ from __future__ import annotations
 import ctypes
 import gc
 import struct
-import threading
 import time
 from typing import Callable, List, Optional, Sequence, Tuple
 
@@ -93,7 +92,6 @@ class IOProcHost:
 def record(device_id: int, seconds: float, hal: Optional[HAL] = None, channels_hint: int = 1) -> bytes:
     """Capture raw Float32 interleaved audio from ``device_id`` for ``seconds``."""
     chunks: List[bytes] = []
-    done = threading.Event()
 
     def on_io(inputs: Sequence[Buffer], outputs: Sequence[Buffer]) -> None:  # noqa: ARG001
         if inputs:
@@ -105,7 +103,7 @@ def record(device_id: int, seconds: float, hal: Optional[HAL] = None, channels_h
     host.start(device_id, on_io)
     try:
         deadline = time.monotonic() + seconds
-        while time.monotonic() < deadline and not done.is_set():
+        while time.monotonic() < deadline:
             time.sleep(0.05)
     finally:
         host.stop()

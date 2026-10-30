@@ -93,3 +93,53 @@ def test_http_handler_roundtrip(session, world):
     get = FakeRequest(b"GET /api/status HTTP/1.1\r\nHost: x\r\n\r\n")
     Handler(get, ("127.0.0.1", 1), None)
     assert b'"up": true' in get.out.getvalue()
+
+
+def test_token_required_when_configured(session, world):
+    app = RemoteApp(session, log=lambda _m: None, token="s3cret")
+    assert app.handle("GET", "/api/status", None)[0] == 401
+    assert app.handle("GET", "/api/status?token=wrong", None)[0] == 401
+    assert app.handle("GET", "/api/status?token=s3cret", None)[0] == 200
+    assert app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "s3cret"})[0] == 200
+    assert app.handle("POST", "/api/volume", {"target": "all", "percent": 5}, {"X-Soundscape-Token": "nope"})[0] == 401
+    assert RemoteApp(session, log=lambda _m: None, token="").authorized("/x", None)
+
+
+def test_real_server_handles_concurrent_requests(session, world):
+    import json as _json
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    session.up()
+    app = RemoteApp(session, log=lambda _m: None, token="t")
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(app))
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    results = []
+
+    def hit(i):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/volume", method="POST",
+                                     data=_json.dumps({"target": "all", "percent": 10 + i}).encode(),
+                                     headers={"content-type": "application/json", "X-Soundscape-Token": "t"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            results.append(resp.status)
+
+    workers = [threading.Thread(target=hit, args=(i,)) for i in range(12)]
+    for w in workers:
+        w.start()
+    for w in workers:
+        w.join(timeout=10)
+    try:
+        assert results == [200] * 12
+        assert 10 <= world.sinks["soundscape"]["volume"] <= 21
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/?token=t", timeout=5) as resp:
+            assert b"X-Soundscape-Token" in resp.read()
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status", timeout=5)
+            assert False, "token missing should be rejected"
+        except urllib.error.HTTPError as e:
+            assert e.code == 401
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

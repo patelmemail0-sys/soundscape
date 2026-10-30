@@ -114,15 +114,23 @@ def parse_info(text: str) -> ServerInfo:
 
 def parse_sinks_json(text: str) -> List[Sink]:
     data = json.loads(text)
+    if not isinstance(data, list):
+        raise ValueError("expected a JSON array of sinks")
     sinks = []
     for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("index"), int) or not item.get("name"):
+            continue  # pactl never emits this; be tolerant of truncated output
         volume = item.get("volume") or {}
         if isinstance(volume, dict):
             vol = _avg(_percent(ch.get("value_percent")) for ch in volume.values() if isinstance(ch, dict))
         else:
             vol = 100
         ports = item.get("ports") or []
+        if not isinstance(ports, list):
+            ports = []
         owner = item.get("owner_module")
+        raw_props = item.get("properties")
+        props: Dict[str, Any] = raw_props if isinstance(raw_props, dict) else {}
         sinks.append(Sink(
             index=int(item["index"]),
             name=str(item["name"]),
@@ -133,7 +141,7 @@ def parse_sinks_json(text: str) -> List[Sink]:
             owner_module=int(owner) if isinstance(owner, int) and owner < 4294967295 else None,
             active_port=item.get("active_port"),
             ports=[str(p.get("name")) for p in ports if isinstance(p, dict) and p.get("name")],
-            properties={str(k): str(v) for k, v in (item.get("properties") or {}).items()},
+            properties={str(k): str(v) for k, v in props.items()},
             sample_spec=str(item.get("sample_specification", "")),
             monitor_source=str(item.get("monitor_source", "")),
         ))
@@ -153,11 +161,18 @@ def _split_blocks(text: str, header: str) -> List[List[str]]:
     return blocks
 
 
+def _block_index(header: str) -> Optional[int]:
+    tail = header.split("#", 1)[1].strip() if "#" in header else ""
+    return int(tail) if tail.isdigit() else None
+
+
 def parse_sinks_text(text: str) -> List[Sink]:
     """Fallback for pactl < 16 which has no ``-f json``."""
     sinks = []
     for block in _split_blocks(text, "Sink #"):
-        index = int(block[0].split("#", 1)[1])
+        index = _block_index(block[0])
+        if index is None:
+            continue
         sink = Sink(index=index, name="")
         section = ""
         for raw in block[1:]:
@@ -179,6 +194,8 @@ def parse_sinks_text(text: str) -> List[Sink]:
                     sink.volume_percent = _avg(_percent(p) for p in v.split(",") if "%" in p)
                 elif k == "owner module":
                     sink.owner_module = int(v) if v.isdigit() and int(v) < 4294967295 else None
+                elif k == "state" and not v:
+                    pass
                 elif k == "active port":
                     sink.active_port = v or None
                 elif k == "sample specification":
@@ -198,22 +215,34 @@ def parse_sinks_text(text: str) -> List[Sink]:
                     name = line.split(":", 1)[0].strip()
                     if name:
                         sink.ports.append(name)
-        sinks.append(sink)
+        if sink.name:
+            sinks.append(sink)
     return sinks
 
 
 def parse_cards_json(text: str) -> List[Card]:
+    data = json.loads(text)
+    if not isinstance(data, list):
+        raise ValueError("expected a JSON array of cards")
     cards = []
-    for item in json.loads(text):
+    for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("index"), int) or not item.get("name"):
+            continue
         ports = item.get("ports") or {}
-        port_names = list(ports.keys()) if isinstance(ports, dict) else [
-            str(p.get("name")) for p in ports if isinstance(p, dict)]
+        if isinstance(ports, dict):
+            port_names = [str(k) for k in ports.keys()]
+        elif isinstance(ports, list):
+            port_names = [str(p.get("name")) for p in ports if isinstance(p, dict) and p.get("name")]
+        else:
+            port_names = []
+        raw_props = item.get("properties")
+        props: Dict[str, Any] = raw_props if isinstance(raw_props, dict) else {}
         cards.append(Card(
             index=int(item["index"]),
             name=str(item["name"]),
             active_profile=str(item.get("active_profile", "")),
             ports=port_names,
-            properties={str(k): str(v) for k, v in (item.get("properties") or {}).items()},
+            properties={str(k): str(v) for k, v in props.items()},
         ))
     return cards
 
@@ -221,7 +250,10 @@ def parse_cards_json(text: str) -> List[Card]:
 def parse_cards_text(text: str) -> List[Card]:
     cards = []
     for block in _split_blocks(text, "Card #"):
-        card = Card(index=int(block[0].split("#", 1)[1]), name="")
+        index = _block_index(block[0])
+        if index is None:
+            continue
+        card = Card(index=index, name="")
         section = ""
         for raw in block[1:]:
             line = raw.strip()
@@ -246,7 +278,8 @@ def parse_cards_text(text: str) -> List[Card]:
                     name = line.split(":", 1)[0].strip()
                     if name:
                         card.ports.append(name)
-        cards.append(card)
+        if card.name:
+            cards.append(card)
     return cards
 
 
@@ -297,7 +330,7 @@ class PulseCtl:
                     out = json_parser(res.stdout)
                     self._json_ok = True
                     return out
-                except (json.JSONDecodeError, KeyError, TypeError):
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
                     pass
             self._json_ok = False
         return text_parser(self._pactl("list", kind).stdout)
@@ -401,20 +434,28 @@ class PulseCtl:
         source = source or self.default_source()
         if not source:
             raise AudioError("no microphone source found", "pass --source <name> (see `pactl list short sources`)")
+        import os as _os
         with tempfile.NamedTemporaryFile(prefix="soundscape-mic-", suffix=".raw", delete=False) as fh:
             path = fh.name
-        with open(path, "wb") as out:
-            proc = self.runner.popen(["parec", "--device", source, "--format=s16le", f"--rate={self.RECORD_RATE}",
-                                      "--channels=1", "--raw"], stdout=out, stderr=subprocess.DEVNULL)
-            deadline = _time.monotonic() + seconds
-            while _time.monotonic() < deadline and proc.poll() is None:
-                _time.sleep(0.05)
-            proc.terminate()
+        try:
+            with open(path, "wb") as out:
+                proc = self.runner.popen(["parec", "--device", source, "--format=s16le", f"--rate={self.RECORD_RATE}",
+                                          "--channels=1", "--raw"], stdout=out, stderr=subprocess.DEVNULL)
+                deadline = _time.monotonic() + seconds
+                while _time.monotonic() < deadline and proc.poll() is None:
+                    _time.sleep(0.05)
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            with open(path, "rb") as fh:
+                data = fh.read()
+        finally:
             try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-        data = open(path, "rb").read()
+                _os.unlink(path)
+            except OSError:
+                pass
         count = len(data) // 2
         samples = [v / 32768.0 for v in _struct.unpack(f"<{count}h", data[: count * 2])]
         return samples, self.RECORD_RATE

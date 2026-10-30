@@ -44,7 +44,8 @@ kAudioDevicePropertyMute = fourcc("mute")
 kAudioDevicePropertyVolumeScalar = fourcc("volm")
 kAudioHardwareServiceDeviceProperty_VirtualMainVolume = fourcc("vmvc")
 kAudioStreamPropertyVirtualFormat = fourcc("sfmt")
-kAudioAggregateDevicePropertyFullSubDeviceList = fourcc("grup")
+kAudioAggregateDevicePropertyFullSubDeviceList = fourcc("grup")  # CFArray of UIDs
+kAudioAggregateDevicePropertyActiveSubDeviceList = fourcc("agrp")  # array of AudioObjectIDs
 
 TRANSPORT_NAMES = {
     fourcc("bltn"): "builtin", fourcc("blue"): "bluetooth", fourcc("blea"): "bluetooth-le",
@@ -370,8 +371,9 @@ class CoreAudio:
         self.hal.destroy_aggregate(device_id)
 
     def aggregate_subdevices(self, device_id: int) -> List[int]:
+        """AudioObjectIDs of an aggregate's active sub-devices."""
         try:
-            return self._u32_list(device_id, kAudioAggregateDevicePropertyFullSubDeviceList)
+            return self._u32_list(device_id, kAudioAggregateDevicePropertyActiveSubDeviceList)
         except HALError:
             return []
 

@@ -33,7 +33,7 @@ class MacAudio:
         self.runner = runner
         self._ca = coreaudio
         self._recorder = recorder  # callable(device_id, seconds) -> bytes, injected in tests
-        self._saved_volume: Dict[str, float] = {}
+        self._saved_volume: Dict[str, float] = {}  # uid -> volume before we muted it by volume
         self.group: List[str] = []  # device UIDs a "master" volume applies to
 
     @property
@@ -67,10 +67,10 @@ class MacAudio:
         return out
 
     def sink(self, name: str) -> Optional[Sink]:
-        for s in self.sinks():
-            if s.name == name:
-                return s
-        return None
+        d = self.ca.device_by_uid(name)
+        if d is None or not d.output_channels and not d.is_soundscape_aggregate:
+            return None
+        return device_to_sink(d, self.ca.volume(d.id), self.ca.mute(d.id))
 
     def bluetooth_sink(self, mac: str) -> Optional[Sink]:
         d = self.ca.bluetooth_output(mac)
@@ -134,14 +134,16 @@ class MacAudio:
         for dev in self._targets(name):
             if self.ca.set_mute(dev.id, mute):
                 continue
-            # no mute control: emulate with volume
+            # no mute control: emulate with volume, remembering what we silenced
             if mute:
+                if dev.uid in self._saved_volume:
+                    continue  # already muted by us; keep the original level
                 current = self.ca.volume(dev.id)
-                if current is not None:
-                    self._saved_volume[dev.uid] = current
+                self._saved_volume[dev.uid] = current if current is not None else 1.0
                 self.ca.set_volume(dev.id, 0.0)
-            else:
-                self.ca.set_volume(dev.id, self._saved_volume.pop(dev.uid, 1.0))
+            elif dev.uid in self._saved_volume:
+                self.ca.set_volume(dev.id, self._saved_volume.pop(dev.uid))
+            # not muted by us: nothing to restore
 
     def set_default_sink(self, name: str) -> None:
         d = self.ca.device_by_uid(name)

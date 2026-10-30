@@ -52,6 +52,7 @@ class Mixer:
     outputs: List[Output] = field(default_factory=list)
     stereo_split: bool = False
     max_delay_s: float = MAX_DELAY_S
+    skip_outputs: int = 0  # leading output buffers that belong to the loopback device itself
     history: bytearray = field(default_factory=bytearray)
     frames_seen: int = 0
 
@@ -117,6 +118,11 @@ class Mixer:
             if size and addr:
                 self.push(ctypes.string_at(addr, size))
         index = 0
+        for _ in range(min(self.skip_outputs, len(outputs))):
+            ch, size, addr = outputs[index]
+            index += 1
+            if size and addr:
+                ctypes.memset(addr, 0, size)  # never feed audio back into the loopback
         for out in self.outputs:
             for _ in range(out.streams):
                 if index >= len(outputs):
@@ -157,9 +163,11 @@ class ControlServer:
             return "pong"
         if cmd == "status":
             return json.dumps(self.mixer.status())
-        if cmd == "delay" and len(parts) == 3:
+        if cmd == "delay" and len(parts) >= 3:
+            # "delay <uid or position> <ms>"; UIDs may contain spaces, the value is always last
+            target, value = line.strip()[len(parts[0]):].strip().rsplit(None, 1)
             try:
-                out = self.mixer.set_delay(parts[1], float(parts[2]))
+                out = self.mixer.set_delay(target, float(value))
             except (KeyError, ValueError):
                 return "err unknown output or value"
             return f"ok {out.delay_ms:.3f} {out.delay_frames}"
@@ -199,12 +207,21 @@ MAX_SOCKET_PATH = 100
 
 
 def short_socket_path(preferred: str) -> str:
-    """AF_UNIX paths are limited to ~104 bytes on macOS; fall back to /tmp when needed."""
+    """AF_UNIX paths are limited to ~104 bytes on macOS; fall back to a private /tmp dir when needed."""
     if len(preferred.encode()) <= MAX_SOCKET_PATH:
         return preferred
     import hashlib
+    import stat
     digest = hashlib.sha1(preferred.encode()).hexdigest()[:8]
-    return f"/tmp/soundscape-{os.getuid()}-{digest}.sock"
+    folder = f"/tmp/soundscape-{os.getuid()}"
+    try:
+        os.mkdir(folder, 0o700)
+    except FileExistsError:
+        st = os.lstat(folder)
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+            raise OSError(f"{folder} exists and is not our private directory") from None
+        os.chmod(folder, 0o700)
+    return f"{folder}/{digest}.sock"
 
 
 def send_command(path: str, command: str, timeout: float = 3.0) -> str:
@@ -213,6 +230,15 @@ def send_command(path: str, command: str, timeout: float = 3.0) -> str:
         s.connect(path)
         s.sendall((command.strip() + "\n").encode())
         return s.recv(65536).decode("utf-8", "replace").strip()
+
+
+def parse_output_spec(spec: str) -> Output:
+    """``position:UID:delay_ms``; UIDs themselves contain colons (``AA-BB-...:output``)."""
+    position, rest = spec.split(":", 1)
+    uid, delay = rest.rsplit(":", 1)
+    if not position or not uid:
+        raise ValueError(f"bad --output spec {spec!r}")
+    return Output(uid=uid, position=position, delay_ms=float(delay))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -232,8 +258,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ca = CoreAudio()
     outputs: List[Output] = []
     for spec in args.output:
-        position, uid, delay = spec.split(":", 2)
-        outputs.append(Output(uid=uid, position=position, delay_ms=float(delay)))
+        outputs.append(parse_output_spec(spec))
     master = outputs[0].uid
     subdevices = [(args.input, True)] + [(o.uid, o.uid != master) for o in outputs]
     agg_id = ca.create_aggregate(args.uid, args.name, subdevices, master_uid=master, private=True)
@@ -253,7 +278,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return 2
             out.streams = max(1, dev.output_streams)
             out.channels = max(1, dev.output_channels // out.streams)
-        mixer = Mixer(rate=rate, in_channels=in_channels, outputs=outputs, stereo_split=args.stereo)
+        loopback = ca.device_by_uid(args.input)
+        mixer = Mixer(rate=rate, in_channels=in_channels, outputs=outputs, stereo_split=args.stereo,
+                      skip_outputs=loopback.output_streams if loopback else 0)
         for out in outputs:
             mixer.set_delay(out.uid, out.delay_ms)
         host = IOProcHost(ca.hal)

@@ -31,7 +31,7 @@ def parse_blueutil_json(text: str) -> List[Dict[str, Any]]:
         data = json.loads(text or "[]")
     except json.JSONDecodeError as exc:
         raise BluetoothError(f"blueutil returned malformed JSON: {exc}") from exc
-    return data if isinstance(data, list) else []
+    return [d for d in data if isinstance(d, dict)] if isinstance(data, list) else []
 
 
 def parse_system_profiler(text: str) -> Dict[str, Dict[str, Any]]:
@@ -41,7 +41,14 @@ def parse_system_profiler(text: str) -> Dict[str, Dict[str, Any]]:
         data = json.loads(text or "{}")
     except json.JSONDecodeError:
         return out
-    for section in data.get("SPBluetoothDataType", []) or []:
+    if not isinstance(data, dict):
+        return out
+    sections = data.get("SPBluetoothDataType") or []
+    if not isinstance(sections, list):
+        return out
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
         for key, connected in (("device_connected", True), ("device_not_connected", False),
                                ("device_title", None)):
             entries = section.get(key)
@@ -49,8 +56,12 @@ def parse_system_profiler(text: str) -> Dict[str, Dict[str, Any]]:
                 continue
             if isinstance(entries, dict):  # macOS 11 shape
                 entries = [{k: v} for k, v in entries.items()]
+            if not isinstance(entries, list):
+                continue
             for entry in entries:
-                for name, props in (entry or {}).items():
+                if not isinstance(entry, dict):
+                    continue
+                for name, props in entry.items():
                     if not isinstance(props, dict):
                         continue
                     addr = props.get("device_address") or props.get("device_addr")

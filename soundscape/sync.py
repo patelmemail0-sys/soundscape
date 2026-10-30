@@ -99,9 +99,8 @@ class Calibrator:
         return sink.name
 
     def _play(self, path: Path, sink: str) -> subprocess.Popen:
-        self.runner.require("paplay")
-        return self.runner.popen(["paplay", "--device", sink, str(path)],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        """Playback through the audio backend (paplay on Linux, afplay on macOS)."""
+        return self.pulse.play_file(path, sink, wait=False)
 
     # -- microphone ------------------------------------------------------
     def measure(self, source: Optional[str] = None, workdir: Optional[Path] = None) -> Measurement:

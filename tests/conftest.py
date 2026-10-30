@@ -143,6 +143,7 @@ class World:
         self.default_source = "alsa_input.pci-0000_00_1f.3.analog-stereo"
         self.pw_nodes: Dict[str, int] = {}
         self.delays: Dict[str, float] = {}
+        self.delay_targets: Dict[str, str] = {}  # delay node -> speaker sink it feeds
         self.port_offsets: Dict[Tuple[str, str], int] = {}
         self.live_pids: Dict[int, FakeProcess] = {}
         self.fail_connect: set = set()
@@ -187,6 +188,12 @@ class World:
     def _drop_bt_sink(self, mac: str):
         self.sinks.pop(self.bt_sink_name(mac), None)
         self.cards.pop(f"bluez_card.{mac_underscored(mac)}", None)
+        # node.dont-reconnect: the delay filter targeting this sink is destroyed too
+        for node in list(self.pw_nodes):
+            if node.endswith("_delay") and self.delay_targets.get(node) == self.bt_sink_name(mac):
+                self.pw_nodes.pop(node, None)
+                self.delays.pop(node, None)
+                self.pw_nodes.pop(f"output.soundscape_{node}", None)
 
     # -- busctl ------------------------------------------------------------
     def managed_objects(self) -> str:
@@ -362,6 +369,7 @@ class World:
         sink_name = re.search(r'combine.mode = sink\s+node.name = "([^"]+)"', text).group(1)
         delay_nodes = re.findall(r'capture.props = \{\s+node.name = "([^"]+)"', text)
         initial = re.findall(r'control = \{ "Delay \(s\)" = ([0-9.]+) \}', text)
+        targets = re.findall(r'target.object = "([^"]+)"', text)
 
         def on_start(proc: FakeProcess):
             if has_delays and self.engine_breaks_with_delays:
@@ -370,9 +378,11 @@ class World:
             self.live_pids[proc.pid] = proc
             self.add_sink(sink_name, "Soundscape (both speakers)", {"node.name": sink_name}, ports=())
             self.pw_nodes[sink_name] = self._idx()
-            for node, value in zip(delay_nodes, initial):
+            for node, value, target in zip(delay_nodes, initial, targets):
                 self.pw_nodes[node] = self._idx()
                 self.delays[node] = float(value)
+                self.delay_targets[node] = target
+                self.pw_nodes[f"output.{sink_name}_{node}"] = self._idx()
 
         def on_stop(proc: FakeProcess):
             self.live_pids.pop(proc.pid, None)
@@ -381,6 +391,8 @@ class World:
             for node in delay_nodes:
                 self.pw_nodes.pop(node, None)
                 self.delays.pop(node, None)
+                self.delay_targets.pop(node, None)
+                self.pw_nodes.pop(f"output.{sink_name}_{node}", None)
 
         return FakeProcess(argv, kwargs, on_start=on_start, on_stop=on_stop)
 

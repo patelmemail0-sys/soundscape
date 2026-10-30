@@ -144,6 +144,30 @@ def test_ensure_up_rebuilds_when_speaker_drops(session, world):
     assert any("lost" in m for m in session.logs)
 
 
+def test_ensure_up_rebuilds_when_speaker_returns_without_its_delay_filter(session, world):
+    """PipeWire destroys the delay filter with the speaker (node.dont-reconnect); when the
+    speaker reconnects on its own, the engine must notice the missing filter and rebuild."""
+    state = session.up()
+    world._drop_bt_sink(MAC_B)
+    world._ensure_bt_sink(MAC_B)  # speaker came back by itself, sink present again
+    assert session.pulse.sink(world.bt_sink_name(MAC_B)) is not None
+    assert "soundscape_right_delay" not in world.pw_nodes
+    new = session.ensure_up()
+    assert new.pid != state.pid and "soundscape_right_delay" in world.pw_nodes
+    assert any("delay filter gone" in m or "sink re-created" in m for m in session.logs)
+    assert session.ensure_up().pid == new.pid  # healthy now
+
+
+def test_ensure_up_pulse_rebuilds_on_recreated_sink(pulse_session, pulse_world):
+    state = pulse_session.up()
+    assert pulse_session.ensure_up().modules == state.modules
+    pulse_world._drop_bt_sink(MAC_A)
+    pulse_world._ensure_bt_sink(MAC_A)  # new index
+    new = pulse_session.ensure_up()
+    assert new.modules != state.modules
+    assert any("re-created" in m for m in pulse_session.logs)
+
+
 def test_scan_add_remove(session, world):
     world.add_device("AA:BB:CC:DD:EE:03", "Bedroom", rssi=-40)
     found = session.scan(2)

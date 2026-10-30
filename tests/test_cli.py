@@ -169,3 +169,79 @@ def test_setup_fails_fast_on_blocking_problem(runner, world, tmp_path, capsys):
 def test_print_devices_empty(capsys):
     cli.print_devices([], False)
     assert "pairing mode" in capsys.readouterr().out
+
+
+def test_daemon_loop_brings_up_and_tears_down(runner, world, tmp_path, monkeypatch, capsys):
+    import signal as _signal
+
+    from soundscape import cli as _cli
+    world.two_speakers()
+    root = tmp_path / "root"
+    run(runner, root, "add", MAC_A)
+    run(runner, root, "add", MAC_B)
+    handlers = {}
+    monkeypatch.setattr(_signal, "signal", lambda num, fn: handlers.__setitem__(num, fn))
+    ticks = {"n": 0}
+
+    def fake_sleep(_s):
+        ticks["n"] += 1
+        if ticks["n"] >= 3:
+            handlers[_signal.SIGTERM](_signal.SIGTERM, None)  # systemd stop
+
+    monkeypatch.setattr(_cli.time, "sleep", fake_sleep)
+    assert run(runner, root, "daemon", "--interval", "1") == 0
+    assert "soundscape" not in world.sinks  # torn down on stop
+    assert world.default_sink.startswith("alsa_output")
+    out = capsys.readouterr().out
+    assert "daemon" in out
+
+
+def test_daemon_keep_leaves_output_in_place(runner, world, tmp_path, monkeypatch):
+    import signal as _signal
+
+    from soundscape import cli as _cli
+    world.two_speakers()
+    root = tmp_path / "root"
+    run(runner, root, "add", MAC_A)
+    run(runner, root, "add", MAC_B)
+    handlers = {}
+    monkeypatch.setattr(_signal, "signal", lambda num, fn: handlers.__setitem__(num, fn))
+    monkeypatch.setattr(_cli.time, "sleep", lambda _s: handlers[_signal.SIGINT](_signal.SIGINT, None))
+    assert run(runner, root, "daemon", "--keep") == 0
+    assert "soundscape" in world.sinks
+
+
+def test_daemon_backs_off_when_speakers_unavailable(runner, world, tmp_path, monkeypatch, capsys):
+    import signal as _signal
+
+    from soundscape import cli as _cli
+    world.two_speakers()
+    world.fail_connect.add(MAC_B)
+    root = tmp_path / "root"
+    run(runner, root, "add", MAC_A)
+    run(runner, root, "add", MAC_B, "--no-connect")
+    handlers = {}
+    monkeypatch.setattr(_signal, "signal", lambda num, fn: handlers.__setitem__(num, fn))
+    monkeypatch.setattr(_cli.time, "sleep", lambda _s: handlers[_signal.SIGTERM](_signal.SIGTERM, None))
+    assert run(runner, root, "daemon") == 0
+    assert "not ready" in capsys.readouterr().err
+
+
+def test_setup_retries_when_speaker_cannot_connect(runner, world, tmp_path, monkeypatch, capsys):
+    world.two_speakers()
+    world.fail_connect.add(MAC_B)
+    root = tmp_path / "root"
+    # enter, pick left, pick right (fails) -> fix (clear failure) and retry, no more, keep L/R, no mic
+    answers = iter(["", "1", "1", "retry", "n", "y", "n"])
+
+    def fake_input(prompt=""):
+        value = next(answers)
+        if value == "retry":
+            world.fail_connect.discard(MAC_B)
+            return ""
+        return value
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    assert run(runner, root, "setup", "--seconds", "1") == 0
+    assert "could not connect" in capsys.readouterr().err
+    assert world.devices[MAC_B]["connected"]

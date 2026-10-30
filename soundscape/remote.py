@@ -1,7 +1,8 @@
 """Phone-friendly web remote (stdlib only): status, volumes, mute, sync offsets, media keys.
 
-Binds to 127.0.0.1 unless ``--host 0.0.0.0`` is given; there is no authentication, so only
-expose it on a network you trust.
+Binds to 127.0.0.1 unless ``--host 0.0.0.0`` is given. With ``--token`` every request must
+carry the token (``?token=`` on the first page load, then an ``X-Soundscape-Token`` header the
+page adds itself); without it, only expose the remote on a network you trust.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .errors import SoundscapeError
 from .session import Session
@@ -53,7 +54,8 @@ button.pri{background:var(--acc);color:#06120d;border-color:var(--acc)}
 </main>
 <script>
 let busy=false;
-async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok){say(j.error||'error')}return j}
+const TOKEN=new URLSearchParams(location.search).get('token')||'';
+async function api(path,body){const h={'X-Soundscape-Token':TOKEN};if(body)h['content-type']='application/json';const r=await fetch(path,body?{method:'POST',headers:h,body:JSON.stringify(body)}:{headers:h});const j=await r.json();if(!r.ok){say(j.error||'error')}return j}
 function say(t){document.getElementById('msg').textContent=t||''}
 async function refresh(){if(busy)return;try{const s=await api('/api/status');render(s)}catch(e){say('offline')}}
 function render(s){document.getElementById('dot').className='dot'+(s.up?' on':'');document.getElementById('eng').textContent=s.up?('via '+s.engine):'down';
@@ -82,15 +84,26 @@ refresh();setInterval(refresh,3000);
 class RemoteApp:
     """HTTP-agnostic request handling, so it can be unit tested without sockets."""
 
-    def __init__(self, session: Session, log: Callable[[str], None] = print):
+    def __init__(self, session: Session, log: Callable[[str], None] = print, token: Optional[str] = None):
         self.session = session
         self.log = log
+        self.token = token or None
         self._lock = threading.Lock()
         self._mute_state: Dict[str, bool] = {}
 
-    def handle(self, method: str, path: str, body: Optional[Dict[str, Any]]) -> Tuple[int, Any, str]:
+    def authorized(self, path: str, headers: Optional[Dict[str, str]]) -> bool:
+        if not self.token:
+            return True
+        supplied = (headers or {}).get("X-Soundscape-Token") or (parse_qs(urlparse(path).query).get("token") or [""])[0]
+        import hmac
+        return hmac.compare_digest(supplied, self.token)
+
+    def handle(self, method: str, path: str, body: Optional[Dict[str, Any]],
+               headers: Optional[Dict[str, str]] = None) -> Tuple[int, Any, str]:
         """Return (status, payload, content_type)."""
         route = urlparse(path).path.rstrip("/") or "/"
+        if not self.authorized(path, headers):
+            return 401, {"error": "token required", "hint": "open the remote with ?token=... as printed when it started"}, "application/json"
         try:
             if method == "GET" and route == "/":
                 return 200, PAGE, "text/html; charset=utf-8"
@@ -176,8 +189,11 @@ def make_handler(app: RemoteApp):
             self.end_headers()
             self.wfile.write(data)
 
+        def _headers(self) -> Dict[str, str]:
+            return {"X-Soundscape-Token": self.headers.get("X-Soundscape-Token", "")}
+
         def do_GET(self) -> None:  # noqa: N802
-            self._send(*app.handle("GET", self.path, None))
+            self._send(*app.handle("GET", self.path, None, self._headers()))
 
         def do_POST(self) -> None:  # noqa: N802
             length = int(self.headers.get("Content-Length") or 0)
@@ -187,17 +203,21 @@ def make_handler(app: RemoteApp):
             except json.JSONDecodeError:
                 self._send(400, {"error": "invalid JSON"}, "application/json")
                 return
-            self._send(*app.handle("POST", self.path, body))
+            self._send(*app.handle("POST", self.path, body, self._headers()))
 
     return Handler
 
 
-def serve(session: Session, host: str = "127.0.0.1", port: int = 8787, log: Callable[[str], None] = print) -> None:
-    app = RemoteApp(session, log)
+def serve(session: Session, host: str = "127.0.0.1", port: int = 8787, log: Callable[[str], None] = print,
+          token: Optional[str] = None) -> None:
+    app = RemoteApp(session, log, token=token)
     httpd = ThreadingHTTPServer((host, port), make_handler(app))
-    log(f"Soundscape remote on http://{host}:{port}/  (Ctrl-C to stop)")
+    suffix = f"?token={token}" if token else ""
+    log(f"Soundscape remote on http://{host}:{port}/{suffix}  (Ctrl-C to stop)")
     if host == "127.0.0.1":
         log("only this machine can reach it; use --host 0.0.0.0 to control it from your phone")
+    elif not token:
+        log("warning: anyone on this network can change volumes; add --token SECRET to require a token")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

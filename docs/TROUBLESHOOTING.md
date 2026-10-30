@@ -95,6 +95,11 @@ Too much noise, speakers too quiet, or the microphone source is wrong.
 `pactl list short sources` shows the microphones; pass `--source NAME`. Never pass a
 `.monitor` source, that is a loopback of the speakers (Soundscape refuses it).
 
+**A speaker came back but stays silent**
+Run `soundscape status`; if the daemon is running it rebuilds within one interval (10 s by
+default) because the health check sees the missing delay filter. Without the daemon, run
+`soundscape up` again. Both engines re-create everything from scratch, so a rebuild is safe.
+
 **Sync drifts over time**
 It should not: each speaker's stream is rate-matched to its own clock. If it does, one
 speaker is probably reconnecting silently. Check `journalctl --user -u soundscape` with the

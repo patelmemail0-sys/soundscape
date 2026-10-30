@@ -40,6 +40,7 @@ class OutputState:
     sink: str
     offset_ms: float = 0.0
     delay_node: Optional[str] = None
+    sink_index: Optional[int] = None  # the sink's index/id when the engine was built
 
 
 @dataclass
@@ -53,6 +54,7 @@ class EngineState:
     previous_default_sink: str = ""
     with_delays: bool = False
     stereo_split: bool = False
+    device_id: Optional[int] = None  # CoreAudio aggregate device id (macOS aggregate engine)
     created_at: float = field(default_factory=time.time)
 
     def output_for(self, address: str) -> Optional[OutputState]:
@@ -73,29 +75,60 @@ class EngineState:
             data = json.loads(path.read_text())
         except json.JSONDecodeError:
             return None
-        outputs = [OutputState(**o) for o in data.pop("outputs", [])]
+        out_known = {f.name for f in OutputState.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+        outputs = []
+        for o in data.pop("outputs", []) or []:
+            if isinstance(o, dict) and {"address", "position", "label", "sink"} <= set(o):
+                outputs.append(OutputState(**{k: v for k, v in o.items() if k in out_known}))
         known = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+        if not isinstance(data.get("engine"), str) or not isinstance(data.get("sink_name"), str):
+            return None
         return cls(outputs=outputs, **{k: v for k, v in data.items() if k in known})
 
 
-def pid_is_ours(pid: int, marker: str) -> bool:
+def _cmdline(pid: int) -> str:
+    """Command line of ``pid``: /proc on Linux, ``ps`` elsewhere (macOS has no /proc)."""
     try:
-        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+        return Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
     except OSError:
+        pass
+    if os.path.isdir("/proc"):
+        return ""
+    try:
+        import subprocess
+        out = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def pid_is_ours(pid: int, marker: str) -> bool:
+    if pid <= 0:
         return False
-    return marker.encode() in cmdline
+    return marker in _cmdline(pid)
 
 
 def find_pids(marker: str) -> List[int]:
     """PIDs of processes whose command line mentions ``marker`` (stray engines after a crash)."""
     found: List[int] = []
-    try:
-        entries = os.listdir("/proc")
-    except OSError:
+    me = os.getpid()
+    if os.path.isdir("/proc"):
+        try:
+            entries = os.listdir("/proc")
+        except OSError:
+            return found
+        for entry in entries:
+            if entry.isdigit() and int(entry) != me and pid_is_ours(int(entry), marker):
+                found.append(int(entry))
         return found
-    for entry in entries:
-        if entry.isdigit() and int(entry) != os.getpid() and pid_is_ours(int(entry), marker):
-            found.append(int(entry))
+    try:
+        import subprocess
+        out = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return found
+    for line in out.stdout.split():
+        if line.isdigit() and int(line) != me:
+            found.append(int(line))
     return found
 
 
@@ -136,6 +169,22 @@ class Engine:
 
     def alive(self, state: EngineState) -> bool:
         return self.pulse.sink(state.sink_name) is not None
+
+    def missing(self, state: EngineState) -> List[str]:
+        """What a healthy session would have but this one lacks (empty = healthy).
+
+        Base check: the virtual sink and every speaker sink exist and are the same sinks the
+        engine was built with (a speaker that dropped and came back gets a new index)."""
+        problems: List[str] = []
+        if not self.alive(state):
+            problems.append("engine")
+        for o in state.outputs:
+            sink = self.pulse.sink(o.sink)
+            if sink is None:
+                problems.append(f"{o.label} (sink gone)")
+            elif o.sink_index is not None and sink.index != o.sink_index:
+                problems.append(f"{o.label} (sink re-created)")
+        return problems
 
     # shared helpers
     def _wait_for_sink(self, name: str, timeout: float, poll: float = 0.25) -> Sink:
@@ -213,12 +262,13 @@ class PipeWireEngine(Engine):
             self.log(f"engine with delay filters failed ({exc.message}); retrying without manual delays")
             with_delays = False
             pid = self._spawn(self._plan(bound, cfg, False), cfg)
+        plan = self._plan(bound, cfg, with_delays)
         outputs = []
-        for b in bound:
+        for b, planned in zip(bound, plan.outputs):
             outputs.append(OutputState(
                 address=b.speaker.address, position=b.speaker.position, label=b.speaker.label,
-                sink=b.sink.name, offset_ms=b.speaker.offset_ms,
-                delay_node=f"soundscape_{b.speaker.position}_delay" if with_delays else None))
+                sink=b.sink.name, offset_ms=b.speaker.offset_ms, sink_index=b.sink.index,
+                delay_node=planned.delay_node_name if with_delays else None))
         state = EngineState(engine=self.name, sink_name=cfg.sink_name, outputs=outputs, pid=pid,
                             conf=str(self.paths.engine_conf), with_delays=with_delays,
                             stereo_split=cfg.stereo_split)
@@ -237,6 +287,23 @@ class PipeWireEngine(Engine):
 
     def alive(self, state: EngineState) -> bool:
         return bool(state.pid) and pid_is_ours(state.pid or -1, self.MARKER) and super().alive(state)
+
+    def missing(self, state: EngineState) -> List[str]:
+        """A speaker that drops takes its delay filter (node.dont-reconnect) and combine stream
+        with it; when the speaker returns nothing re-creates them, so check the graph."""
+        problems = super().missing(state)
+        if "engine" in problems or not state.with_delays:
+            return problems
+        try:
+            nodes = set(self.pw.node_names())
+        except AudioError:
+            return problems
+        for o in state.outputs:
+            if o.delay_node and o.delay_node not in nodes:
+                problems.append(f"{o.label} (delay filter gone)")
+            elif o.delay_node and f"output.{state.sink_name}_{o.delay_node}" not in nodes:
+                problems.append(f"{o.label} (combine stream gone)")
+        return problems
 
     def set_offset(self, state: EngineState, address: str, offset_ms: float) -> None:
         out = state.output_for(address)
@@ -286,7 +353,7 @@ class PulseEngine(Engine):
         for b in bound:
             state.outputs.append(OutputState(address=b.speaker.address, position=b.speaker.position,
                                              label=b.speaker.label, sink=b.sink.name,
-                                             offset_ms=b.speaker.offset_ms))
+                                             offset_ms=b.speaker.offset_ms, sink_index=b.sink.index))
         self._apply_port_offsets(state)
         self._route_default(state, cfg)
         return state

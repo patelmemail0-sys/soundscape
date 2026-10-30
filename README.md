@@ -218,12 +218,13 @@ This needs the PipeWire engine on Linux or the relay engine (BlackHole) on macOS
 ## Phone remote
 
 ```bash
-soundscape remote --host 0.0.0.0 --port 8787
+soundscape remote --host 0.0.0.0 --port 8787 --token mysecret
 ```
 
-Open `http://<this-machine>:8787/` on your phone for master and per-speaker volume, mute,
-plus/minus sync nudges, and play/pause/next (through `playerctl`). There is no login, so
-only expose it on a network you trust; the default bind is `127.0.0.1`.
+Open `http://<this-machine>:8787/?token=mysecret` on your phone for master and per-speaker
+volume, mute, plus/minus sync nudges, and play/pause/next (through `playerctl`). With
+`--token` every request must carry the token; without it anyone on the network can change
+volumes, so the default bind is `127.0.0.1` and Soundscape warns when you open it up.
 
 ## Keep it running
 
@@ -233,7 +234,9 @@ only expose it on a network you trust; the default bind is `127.0.0.1`.
 
 The daemon brings the speakers up at login, reconnects them when they drop, rebuilds the
 output, and takes everything down cleanly on stop. Powered-off speakers are retried with a
-backoff, so you can simply switch them on and off. On macOS check `/tmp/soundscape-daemon.log`;
+backoff, so you can simply switch them on and off. Every check also verifies the audio graph
+itself: a speaker that comes back on its own without its delay filter, or a sink that was
+re-created with a new id, triggers a rebuild within one interval. On macOS check `/tmp/soundscape-daemon.log`;
 on Linux `systemctl --user status soundscape`.
 
 ## macOS notes
@@ -265,7 +268,7 @@ soundscape offset POSITION 12.5 [--relative]
 soundscape sync [--auto] [--source SRC] [--passes N] [--no-apply]
 soundscape test [left|right]    tone on each speaker in turn
 soundscape play FILES... [--loop] [--shuffle] [--player mpv|ffplay|paplay]
-soundscape remote [--host H] [--port P]
+soundscape remote [--host H] [--port P] [--token T]
 soundscape daemon [--interval S] [--keep]
 soundscape config show|path|set KEY VALUE
 ```
