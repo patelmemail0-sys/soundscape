@@ -52,6 +52,7 @@ svg text{fill:var(--fg);font-size:12px}
 </style>
 </head>
 <body>
+<div id="stale" style="display:none;background:var(--warn);color:#1a1200;padding:8px 20px;font-size:14px">Soundscape was updated on disk but this server is still the old version. Press Ctrl-C in the terminal and run <b>soundscape ui</b> again.</div>
 <header>
   <h1><span class="dot" id="dot"></span>Soundscape <span class="pill" id="ver"></span></h1>
   <span class="pill" id="engine">connecting...</span>
@@ -106,7 +107,7 @@ svg text{fill:var(--fg);font-size:12px}
 
   <section class="panel">
     <h2>Settings <span class="spacer"></span><span class="sub">changes apply on the next Bring up</span></h2>
-    <div class="row between"><label>Engine</label><select id="cfgEngine" onchange="cfg('engine',this.value)"></select></div>
+    <div class="row between"><label>Engine <span class="sub" id="engineHint"></span></label><select id="cfgEngine" onchange="cfg('engine',this.value)"></select></div>
     <div class="row between" style="margin-top:8px"><label>Stereo split (left = L channel, right = R)</label><input type="checkbox" id="cfgStereo" onchange="cfg('stereo_split',this.checked)"></div>
     <div class="row between" style="margin-top:8px"><label>Automatic latency compensation</label><input type="checkbox" id="cfgComp" onchange="cfg('latency_compensate',this.checked)"></div>
     <div class="row between" style="margin-top:8px"><label>Make it the default output while up</label><input type="checkbox" id="cfgDefault" onchange="cfg('set_default_sink',this.checked)"></div>
@@ -126,7 +127,11 @@ svg text{fill:var(--fg);font-size:12px}
 
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
+const PAGE_VERSION = '0.4.5', SERVER_VERSION = '__SERVER_VERSION__';
 let status = null, jobId = null, busyPath = false;
+if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) document.getElementById('stale').style.display = 'block';
+window.addEventListener('error', e => toast('Page error', e.message, false));
+window.addEventListener('unhandledrejection', e => { if (e.reason && e.reason.message && e.reason.message !== 'error') toast('Request failed', e.reason.message, false); });
 
 async function api(path, body) {
   const headers = {'X-Soundscape-Token': TOKEN};
@@ -147,7 +152,8 @@ function toast(title, body, spinning) {
 
 // ---------- jobs
 async function job(path, body) {
-  const r = await api(path, body || {});
+  let r;
+  try { r = await api(path, body || {}); } catch (e) { return null; }
   jobId = r.job.id; toast(r.job.name, '', true); pollJob();
   return new Promise(res => { jobWaiters.push(res); });
 }
@@ -188,22 +194,32 @@ function renderSpeakers(s) {
     const id = 'sp-' + sp.address.replace(/:/g, '');
     let el = document.getElementById(id);
     if (!el) {
-      el = document.createElement('div'); el.className = 'card'; el.id = id;
+      el = document.createElement('div'); el.className = 'card'; el.id = id; el.dataset.address = sp.address;
       el.innerHTML = `
         <h3><span class="badge ${esc(sp.position)}">${esc(sp.position)}</span><span class="name"></span><span class="spacer"></span><span class="st"></span></h3>
         <div class="sub sink"></div>
-        <div class="st bad modewarn" style="display:none;margin-top:6px">headset mode: mono, phone quality, out of sync. <button class="sm" onclick="reconnect('${sp.address}')">Reconnect</button></div>
-        <div class="row" style="margin-top:8px"><input type="range" min="0" max="100" class="v" style="flex:1" oninput="vol('${sp.address}',this.value)"><span class="mono vv" style="width:40px;text-align:right"></span></div>
+        <div class="st bad modewarn" style="display:none;margin-top:6px">headset mode: mono, phone quality, out of sync. <button class="sm" data-act="reconnect">Reconnect</button></div>
+        <div class="row" style="margin-top:8px"><input type="range" min="0" max="100" class="v" style="flex:1"><span class="mono vv" style="width:40px;text-align:right"></span></div>
         <div class="row between" style="margin-top:8px">
           <span class="sub">delay</span>
-          <span class="stepper"><button onclick="off('${sp.address}',-5)">-5</button><button onclick="off('${sp.address}',-1)">-1</button><span class="mono o"></span><button onclick="off('${sp.address}',1)">+1</button><button onclick="off('${sp.address}',5)">+5</button></span>
+          <span class="stepper"><button data-act="off" data-d="-5">-5</button><button data-act="off" data-d="-1">-1</button><span class="mono o"></span><button data-act="off" data-d="1">+1</button><button data-act="off" data-d="5">+5</button></span>
         </div>
         <div class="row" style="margin-top:10px">
-          <button class="sm" onclick="mute('${sp.address}')">mute</button>
-          <button class="sm" onclick="job('/api/test',{target:'${sp.address}'})">tone</button>
+          <button class="sm" data-act="mute">mute</button>
+          <button class="sm" data-act="tone">tone</button>
           <span class="spacer"></span>
-          <button class="sm danger" onclick="removeSpeaker('${sp.address}','${esc(sp.name)}')">remove</button>
+          <button class="sm danger" data-act="remove">remove</button>
         </div>`;
+      el.querySelector('.v').addEventListener('input', ev => vol(sp.address, ev.target.value));
+      el.addEventListener('click', ev => {
+        const b = ev.target.closest('button[data-act]'); if (!b) return;
+        const act = b.dataset.act, addr = el.dataset.address, name = el.querySelector('.name').textContent;
+        if (act === 'off') off(addr, +b.dataset.d);
+        else if (act === 'mute') mute(addr);
+        else if (act === 'tone') job('/api/test', {target: addr});
+        else if (act === 'reconnect') job('/api/reconnect', {target: addr});
+        else if (act === 'remove') removeSpeaker(addr, name);
+      });
       box.appendChild(el);
     }
     el.querySelector('.name').textContent = sp.name;
@@ -244,6 +260,7 @@ function renderSettings(s) {
   const c = s.config; const sel = document.getElementById('cfgEngine');
   const engines = s.engines || []; if (sel.options.length !== engines.length) sel.innerHTML = engines.map(e => `<option value="${e}">${e}</option>`).join('');
   if (document.activeElement !== sel) sel.value = c.engine;
+  document.getElementById('engineHint').textContent = (s.platform === 'mac' && s.engine === 'aggregate') ? '· aggregate: no sync trims; choose auto or relay and Rebuild' : '';
   document.getElementById('cfgStereo').checked = !!c.stereo_split;
   document.getElementById('cfgComp').checked = !!c.latency_compensate;
   document.getElementById('cfgDefault').checked = !!c.set_default_sink;
@@ -261,21 +278,21 @@ function renderSync(m) {
 
 // ---------- controls
 const vt = {};
-function vol(t, v) { clearTimeout(vt[t]); vt[t] = setTimeout(() => api('/api/volume', {target: t, percent: +v}).then(refresh), 150); }
-function off(t, d) { api('/api/offset', {target: t, delta_ms: d}).then(refresh); }
-function mute(t) { api('/api/mute', {target: t, toggle: true}).then(refresh); }
-function reconnect(t) { job('/api/reconnect', {target: t}); }
-function media(a) { api('/api/media', {action: a}).then(r => { if (r.message) toast('media', r.message, false); }); }
-function cfg(k, v) { api('/api/config', {key: k, value: v}).then(r => { if (r.note) toast(k + ' saved', r.note, false); refresh(); }); }
-async function removeSpeaker(addr, name) { if (!confirm(`Remove ${name} from Soundscape?`)) return; await api('/api/remove', {target: addr}); refresh(); }
+const quiet = () => {};
+function vol(t, v) { clearTimeout(vt[t]); vt[t] = setTimeout(() => api('/api/volume', {target: t, percent: +v}).then(refresh).catch(quiet), 150); }
+function off(t, d) { api('/api/offset', {target: t, delta_ms: d}).then(r => { toast('Delay set', Object.entries(r.offsets || {}).map(([k, v]) => `${k}: +${v.toFixed(1)} ms`).join('   '), false); refresh(); }).catch(quiet); }
+function mute(t) { api('/api/mute', {target: t, toggle: true}).then(r => { toast(r.muted ? 'Muted' : 'Unmuted', '', false); refresh(); }).catch(quiet); }
+function media(a) { api('/api/media', {action: a}).then(r => { if (r.message) toast('media', r.message, false); }).catch(quiet); }
+function cfg(k, v) { api('/api/config', {key: k, value: v}).then(r => { toast(k + ' saved', r.note || '', false); refresh(); }).catch(quiet); }
+async function removeSpeaker(addr, name) { if (!confirm(`Remove ${name} from Soundscape?`)) return; await api('/api/remove', {target: addr}).catch(quiet); refresh(); }
 async function calibrate() {
   const source = document.getElementById('source').value;
   const j = await job('/api/sync', {source});
-  if (j.state === 'done') renderSync(j.result);
+  if (j && j.state === 'done') renderSync(j.result);
 }
 async function scan() {
   const j = await job('/api/scan', {seconds: 10});
-  if (j.state !== 'done') return;
+  if (!j || j.state !== 'done') return;
   const known = new Set((status?.speakers || []).map(s => s.address));
   const list = (j.result || []).filter(d => !known.has(d.address));
   const box = document.getElementById('found');
@@ -288,7 +305,7 @@ async function scan() {
 async function addSpeaker(addr) {
   const pos = document.getElementById('pos-' + addr.replace(/:/g, '')).value.trim();
   const j = await job('/api/add', {address: addr, position: pos || null});
-  if (j.state === 'done') { document.getElementById('found').innerHTML = '<div class="empty">Added. Scan again to add another, or Bring up.</div>'; }
+  if (j && j.state === 'done') { document.getElementById('found').innerHTML = '<div class="empty">Added. Scan again to add another, or Bring up.</div>'; }
 }
 async function doctor() {
   const box = document.getElementById('checks'); box.innerHTML = '<div class="empty"><span class="spin"></span> running checks...</div>';
@@ -302,7 +319,7 @@ async function refreshLog() {
   el.textContent = lines.map(l => new Date(l.t * 1000).toLocaleTimeString() + '  ' + l.msg).join('\n') || 'no activity yet';
   el.scrollTop = el.scrollHeight;
 }
-async function resetTrims() { await api('/api/offset', {target: 'all', offset_ms: 0}); document.getElementById('syncNote').textContent = 'trims reset'; refresh(); }
+async function resetTrims() { try { await api('/api/offset', {target: 'all', offset_ms: 0}); toast('Trims reset', '', false); document.getElementById('syncNote').textContent = 'trims reset'; } catch (e) {} refresh(); }
 async function loadSources() {
   const r = await api('/api/sources').catch(() => ({sources: []}));
   const list = Array.isArray(r) ? r : (r.sources || []);

@@ -33,7 +33,9 @@ UI_FILE = Path(__file__).with_name("ui.html")
 
 
 def load_page() -> str:
-    return UI_FILE.read_text(encoding="utf-8")
+    """The page file is read on every request so an updated install shows up without a restart;
+    the running process's version is injected so the page can tell when a restart is needed."""
+    return UI_FILE.read_text(encoding="utf-8").replace("__SERVER_VERSION__", __version__)
 
 
 PAGE = load_page()  # kept for tests and backwards compatibility
@@ -166,6 +168,17 @@ class RemoteApp:
         job = self.jobs.start(name, wrapper)
         return {"job": job.to_dict()}
 
+    class Busy(SoundscapeError):
+        pass
+
+    def _quick(self):
+        """Quick controls wait a few seconds for a running job, then report busy instead of hanging."""
+        if not self._lock.acquire(timeout=4.0):
+            active = self.jobs.active
+            raise RemoteApp.Busy(f"busy: {active.name if active else 'another operation'} is running",
+                                 "wait for it to finish and try again")
+        return self._lock
+
     # -- auth ------------------------------------------------------------------------
     def authorized(self, path: str, headers: Optional[Dict[str, str]]) -> bool:
         if not self.token:
@@ -192,6 +205,8 @@ class RemoteApp:
             return 404, {"error": "not found"}, "application/json"
         except RouteNotFound as exc:
             return 404, {"error": f"unknown route {exc}"}, "application/json"
+        except RemoteApp.Busy as exc:
+            return 409, {"error": exc.message, "hint": exc.hint}, "application/json"
         except SoundscapeError as exc:
             return 400, {"error": exc.message, "hint": exc.hint}, "application/json"
         except KeyError as exc:
@@ -219,8 +234,7 @@ class RemoteApp:
             return {"recommended": recommended, "sources": sources}
         if route == "/api/doctor":
             from .doctor import run_checks
-            with self._lock:
-                checks = run_checks(self.session.runner, self.session.bluez, self.session.pulse)
+            checks = run_checks(self.session.runner, self.session.bluez, self.session.pulse)
             return [{"status": c.status, "title": c.title, "detail": c.detail, "fix": c.fix} for c in checks]
         if route == "/api/log":
             return list(self.events)[-int(query.get("n", "80")):]
@@ -232,8 +246,7 @@ class RemoteApp:
         raise RouteNotFound(route)
 
     def status(self) -> Dict[str, Any]:
-        with self._lock:
-            st = self.session.status()
+        st = self.session.status()  # read-only: never queue behind a long job
         cfg = self.session.config
         st["config"] = {k: getattr(cfg, k) for k in cfg.SETTABLE}
         st["version"] = __version__
@@ -267,8 +280,11 @@ class RemoteApp:
                                  lambda: asdict(s.add_speaker(address, position=position, name=name,
                                                               replace=bool(body.get("replace")), connect=True)))
         if route == "/api/remove":
-            with self._lock:
+            lock = self._quick()
+            try:
                 sp = s.remove_speaker(str(body["target"]), forget=bool(body.get("forget")))
+            finally:
+                lock.release()
             return {"ok": True, "removed": sp.label}
         if route == "/api/reconnect":
             target = str(body["target"])
@@ -284,12 +300,16 @@ class RemoteApp:
                 return True
             return self._run_job("Playing test tones", tones_job)
         if route == "/api/config":
-            with self._lock:
+            lock = self._quick()
+            try:
                 value = s.config.set_option(str(body["key"]), body["value"])
                 s.save_config()
+            finally:
+                lock.release()
             return {"ok": True, "key": body["key"], "value": value,
                     "note": "run Up again to apply" if s.state() else None}
-        with self._lock:
+        lock = self._quick()
+        try:
             if route == "/api/volume":
                 sink = s.set_volume(str(body["target"]), int(body["percent"]))
                 return {"ok": True, "sink": sink}
@@ -312,6 +332,8 @@ class RemoteApp:
                         "offsets": {x.position: x.offset_ms for x in s.config.speakers}}
             if route == "/api/media":
                 return self._media(str(body.get("action", "play-pause")))
+        finally:
+            lock.release()
         raise RouteNotFound(route)
 
     def _calibrate(self, body: Dict[str, Any]) -> Dict[str, Any]:

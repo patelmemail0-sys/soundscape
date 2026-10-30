@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.5 - 2026-10-30
+
+Dashboard reliability.
+
+* Every control reports its outcome (delay set, muted, saved, busy, errors) instead of
+  failing silently; page errors surface as a toast.
+* Quick controls no longer queue behind long jobs; they wait a few seconds then report busy.
+  Status polling never blocks.
+* Speaker cards use event delegation, fixing broken buttons for speaker names with an
+  apostrophe (e.g. "Yogi's JBL Flip 6").
+* A banner tells you to restart `soundscape ui` when the server process is older than the
+  installed code; the engine setting shows a hint when aggregate mode blocks sync trims.
+
 ## 0.4.4 - 2026-10-30
 
 * A speaker stuck in Bluetooth headset mode (mono, 16 kHz, no bass, out of sync) is
