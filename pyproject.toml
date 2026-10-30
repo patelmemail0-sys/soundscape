@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soundscape-bt"
+version = "0.1.0"
+description = "Play one audio source through two Bluetooth speakers at once, in sync, from a single Linux machine."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "patelmemail0-sys" }]
+keywords = ["bluetooth", "a2dp", "speakers", "pipewire", "pulseaudio", "multiroom", "stereo"]
+classifiers = [
+  "Environment :: Console",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Sound/Audio",
+]
+dependencies = []
+
+[project.optional-dependencies]
+fast = ["numpy>=1.20"]
+dev = ["pytest>=7", "ruff>=0.4"]
+
+[project.scripts]
+soundscape = "soundscape.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/patelmemail0-sys/soundscape"
+Issues = "https://github.com/patelmemail0-sys/soundscape/issues"
+
+[tool.setuptools.packages.find]
+include = ["soundscape*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# UP006/UP035/UP045: keep typing.List/Optional spellings so runtime aliases stay valid on 3.9
+ignore = ["E501", "UP006", "UP035", "UP045"]

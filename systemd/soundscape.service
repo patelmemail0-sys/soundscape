@@ -1,0 +1,19 @@
+# User unit: keeps both Bluetooth speakers joined into the Soundscape output.
+#   mkdir -p ~/.config/systemd/user && cp systemd/soundscape.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now soundscape
+# ./install.sh --service does all of this.
+[Unit]
+Description=Soundscape: one source, two Bluetooth speakers, in sync
+After=pipewire.service pipewire-pulse.service wireplumber.service pulseaudio.service
+Wants=pipewire.service pipewire-pulse.service wireplumber.service
+
+[Service]
+Type=simple
+# Reconnects dropped speakers and rebuilds the output; `down` runs on stop.
+ExecStart=%h/.local/bin/soundscape daemon --interval 10
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

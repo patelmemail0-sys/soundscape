@@ -1,0 +1,144 @@
+# Architecture
+
+Soundscape is a thin, well-tested orchestration layer over three things Linux already has:
+BlueZ (Bluetooth), the sound server (PipeWire or PulseAudio), and its command-line tools.
+It owns no audio path of its own; that is deliberate. The sound server already does
+float32 mixing, per-device clock recovery and Bluetooth encoding better than a Python
+process could, and keeping the audio out of Python is what makes "no EQ, no distortion,
+no added processing" a structural guarantee instead of a promise.
+
+```
+ cli.py ──► session.py ──┬──► bluez.py      (busctl --json, bluetoothctl)   pair / trust / connect
+                         ├──► pulse.py      (pactl)                         sinks, cards, volume, default
+                         └──► engine.py ──┬► PipeWireEngine ─► pipewire.py  config render, pw-dump, pw-cli
+                                          └► PulseEngine    ─► pulse.py     module-combine-sink
+ sync.py  (calibration)  ─► tones.py (WAV) + dsp.py (FFT cross-correlation)
+ remote.py (web remote)  ─► session.py
+ doctor.py (checks)      ─► bluez.py / pulse.py / pipewire.py
+ runner.py               every subprocess goes through here; tests swap in a fake
+```
+
+## Layers
+
+### `runner.Runner`
+One object runs every external command (`run`, `popen`, `which`). The test-suite replaces it
+with a `FakeRunner` plus a stateful `World` that emulates bluetoothd and a sound server, so
+the real `Session`, both engines, the calibrator and the CLI run end to end without hardware.
+
+### `bluez.BlueZ`
+* **Queries and actions** use `busctl --system --json=short` against `org.bluez`:
+  `GetManagedObjects` for state, `Pair`/`Connect`/`Disconnect` on `org.bluez.Device1`,
+  `set-property Trusted`/`Powered`. busctl ships with systemd, so there is no Python D-Bus
+  dependency. Variant wrappers (`{"type": ..., "data": ...}`) are stripped recursively.
+* **Discovery** must outlive a single call (BlueZ stops scanning when the requesting client
+  disconnects), so `scan()` keeps a `bluetoothctl` process alive on a pipe for N seconds and
+  then reads devices via busctl.
+* BlueZ error strings (`br-connection-profile-unavailable`, `Authentication Failed`, ...)
+  are mapped to plain-English hints in `ERROR_HINTS`.
+* `ensure_connected()` is idempotent: pair if unpaired, trust, connect with retries, verify
+  `Connected`.
+
+### `pulse.PulseCtl`
+A `pactl` wrapper that prefers `pactl -f json` (pactl >= 16) and falls back to parsing the
+text output on older systems. It identifies a speaker's sink by Bluetooth address from
+either `api.bluez5.address` (PipeWire), `device.string` (PulseAudio) or the sink name
+(`bluez_output.AA_BB_...` / `bluez_sink.AA_BB_...`). pactl works against pipewire-pulse too,
+which is why volume, mute, default-sink and stream moves are the same on both servers.
+
+### `engine`
+An engine turns N connected Bluetooth sinks into one virtual sink and owns its lifetime.
+`EngineState` (JSON in `$XDG_STATE_HOME/soundscape/state.json`) records what was created so
+`down` can undo it even after a crash, and stray engines are swept before each `up`.
+
+**PipeWireEngine** (default when the server is PipeWire and `pipewire`, `pw-dump`, `pw-cli`
+exist). It writes a config and starts a *second* `pipewire` process with
+`PIPEWIRE_CONFIG_DIR` pointing at it. That process connects to the user's daemon as a client
+(no `core.daemon`, so it never competes for the socket) and hosts:
+
+* one `libpipewire-module-filter-chain` per speaker whose graph is a single builtin `delay`
+  node (`max-delay` 1 s). Its capture side is an `Audio/Sink` named
+  `soundscape_<position>_delay`; its playback side targets the speaker's sink with
+  `node.dont-reconnect = true` so audio can never silently fall back to the laptop speakers.
+  The control `delay:Delay (s)` is changed live with `pw-cli set-param <id> Props`.
+* one `libpipewire-module-combine-stream` sink named `soundscape` with
+  `combine.latency-compensate = true` and `stream.props = { resample.quality = 10 }`, whose
+  `stream.rules` target the delay sinks. With `--stereo` each rule adds
+  `combine.audio.position = [ FL FL ]` / `[ FR FR ]` so one speaker gets the left channel
+  on both drivers and the other the right.
+
+If the config with delay filters fails to produce the sink (very old PipeWire), the engine
+retries without them and marks `with_delays = false`; manual trims then report a clear error.
+
+The generated config was validated with `spa-json-dump` and run against PipeWire 1.0.5 and
+WirePlumber with null sinks standing in for speakers (`tests/live/`): the sink appears, the
+links form as drawn above, the live delay change is visible in the node's `Props`, playback
+flows, and teardown restores the previous default sink.
+
+**PulseEngine** (PulseAudio, or PipeWire without the native tools). Loads
+`module-combine-sink` via pactl with `sink_name=soundscape slaves=<a>,<b> adjust_time=5` and
+the best available resampler (`soxr-vhq` → `speex-float-10` → `speex-float-5` → default).
+PulseAudio has no per-output delay, so a trim of *X ms on speaker A* is expressed as a
+`set-port-latency-offset` of `+X` on every *other* speaker: PulseAudio treats a port offset
+as hidden downstream latency and feeds that port earlier, which is the same thing. Offsets
+are normalised so the most-delayed speaker is at 0 and no lead is negative.
+
+### `session.Session`
+The one place that knows the whole flow:
+
+```
+up():    normalise offsets → tear down stale state → connect & verify each speaker
+         → wait for its sink → engine.build → per-speaker volume → save state + config
+down():  engine.teardown → restore default sink → delete state
+ensure_up(): no-op when healthy; rebuild when a speaker's sink vanished (used by the daemon)
+set_offset(): update config, normalise, push every speaker's delay to the running engine
+```
+
+Config lives in `$XDG_CONFIG_HOME/soundscape/config.json` (`config.Config`): speakers with
+position, friendly name, `offset_ms` (extra delay on *that* speaker) and optional volume trim,
+plus engine choice and the flags behind `up`'s options.
+
+### `sync.Calibrator`
+*Microphone mode*: generates a 6 s track with identical chirps at 1.0 s and 4.0 s, starts
+`parec` on the microphone, mutes speaker B, plays the track through the `soundscape` sink,
+swaps the mutes at 2.5 s, and un-mutes everything afterwards. Both chirps travel the exact
+same pipeline, so startup jitter of `paplay` cancels out and the arrival gap minus 3.000 s
+is the inter-speaker error. `dsp.measure_gap` cross-correlates the recording with the chirp
+(FFT, numpy if present, pure Python otherwise), refines each peak parabolically for
+sub-sample precision, and reports a confidence (peak over window RMS) that must exceed 4
+before anything is applied. The early speaker is then delayed by the gap.
+
+*By-ear mode*: loops a click track and nudges trims live from the keyboard; a negative nudge
+on one speaker is turned into a positive delay on the other so delays never go negative.
+
+### `remote.RemoteApp`
+A stdlib `ThreadingHTTPServer` with a JSON API (`/api/status`, `/api/volume`, `/api/mute`,
+`/api/offset`, `/api/media`, `/api/up|down|test`) and one self-contained HTML page. The
+request handling is separated from sockets so it is unit-tested directly.
+
+## Design rules
+
+1. **Never guess an audio path.** `node.dont-reconnect`, explicit `target.object`, and a
+   state file that records exactly what was created. If a speaker is gone, say so and
+   rebuild; never fall through to another device.
+2. **No audio through Python.** Only control-plane commands. Audio quality is the sound
+   server's, untouched.
+3. **Every failure carries a fix.** `SoundscapeError.hint` is shown by the CLI, and
+   `doctor` prints a concrete package or command for each problem.
+4. **Idempotent everything.** `up` twice, `add` of a known speaker, `down` with nothing
+   running, killing the daemon mid-way: all converge to a consistent state.
+5. **Testable without hardware.** `Runner` is the only seam; the `World` fake is the test
+   double for the whole OS. The live PipeWire test is the one place hardware-free reality
+   is checked, in CI.
+
+## Limits worth knowing
+
+* Absolute Bluetooth latency (100 to 250 ms) is inherent to A2DP; Soundscape aligns the
+  speakers *to each other*.
+* Reported Bluetooth latency is approximate, so automatic compensation leaves a residual of
+  a few to tens of ms that calibration removes. Expect 1 to 3 ms after `sync --auto`.
+* Two A2DP streams share one radio. Standard SBC/AAC bitrates are fine on most adapters;
+  SBC-XQ at high bitrates on both speakers may not be.
+* Stereo split needs the PipeWire engine.
+* The PulseAudio engine's trims rely on `set-port-latency-offset`, which pipewire-pulse
+  may accept but not act on; on PipeWire systems install `pipewire-bin` to get the native
+  engine instead.
