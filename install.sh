@@ -48,12 +48,16 @@ else
 fi
 
 if ! command -v soundscape >/dev/null 2>&1; then
-  echo "note: the install location is not on your PATH yet. Add this to your shell profile:"
-  if [[ "$OS" == "Darwin" ]]; then
-    echo '  export PATH="$HOME/Library/Python/3.9/bin:$HOME/.local/bin:$PATH"   # adjust the Python version'
-  else
-    echo '  export PATH="$HOME/.local/bin:$PATH"'
-  fi
+  # pip --user puts commands in a folder the shell does not search by default
+  user_bin="$(python3 -m site --user-base 2>/dev/null)/bin"
+  [[ -x "$user_bin/soundscape" ]] || user_bin="$HOME/.local/bin"
+  profile="$HOME/.bashrc"; [[ "${SHELL##*/}" == "zsh" ]] && profile="$HOME/.zshrc"
+  echo
+  echo "note: 'soundscape' was installed to $user_bin, which is not on your PATH (the list of"
+  echo "folders your shell searches for commands). Run this once to add it:"
+  echo
+  echo "  echo 'export PATH=\"$user_bin:\$PATH\"' >> $profile && source $profile"
+  echo
 fi
 
 if (( SERVICE )); then
