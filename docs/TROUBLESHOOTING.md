@@ -119,12 +119,48 @@ then `soundscape up`.
 processes and leftover `module-combine-sink` modules. If something is still stuck:
 `pkill -f soundscape-engine.conf` and `pactl list short modules | grep soundscape`.
 
-## Daemon / systemd
+## macOS
+
+**"is not paired with this Mac" / "paired but not connected"**
+Without `blueutil`, Soundscape cannot pair or connect for you. Either pair and connect the
+speakers from System Settings > Bluetooth (they reconnect automatically when switched on),
+or `brew install blueutil` and run `soundscape add` again.
+
+**Nothing plays / sound still comes from the MacBook**
+`soundscape status` should show the aggregate (or BlackHole) as the default output. Some
+apps keep their own output choice; pick "Soundscape (both speakers)" or "BlackHole 2ch" in
+the app, or restart it.
+
+**Volume keys do nothing**
+Normal with an aggregate device. Use `soundscape volume 40`, the phone remote, or install
+BlackHole (relay engine) which keeps the keys working.
+
+**"the aggregate engine cannot delay one speaker"**
+Install BlackHole (`brew install blackhole-2ch`, then reboot or `sudo killall coreaudiod`)
+and run `soundscape up` again; the relay engine is picked automatically.
+
+**Microphone sync says it recorded nothing**
+macOS asks for microphone permission per app the first time; allow it for your terminal in
+System Settings > Privacy & Security > Microphone and run `soundscape sync --auto` again.
+
+**Crackle with the relay engine**
+Increase the buffer: `soundscape config set engine relay` is already in effect; set a larger
+block with `SOUNDSCAPE_RELAY_BUFFER=2048 soundscape up` (doubles latency to about 43 ms,
+both speakers equally). Closing CPU-heavy apps helps too.
+
+**AirPlay from the iPhone stops or stutters**
+AirPlay Receiver needs both devices on the same Wi-Fi and the Mac awake. Disable "Put hard
+disks to sleep" and screen lock while playing, or keep the Mac on power.
+
+## Daemon / systemd / launchd
 
 ```bash
 systemctl --user status soundscape
 journalctl --user -u soundscape -f
 ```
+
+On macOS the LaunchAgent logs to `/tmp/soundscape-daemon.log`; stop it with
+`launchctl unload -w ~/Library/LaunchAgents/com.soundscape.daemon.plist`.
 
 The unit runs `soundscape daemon`, which retries unavailable speakers with a growing backoff
 (up to two minutes) and rebuilds when one drops. Stopping the unit runs `down`. If you want

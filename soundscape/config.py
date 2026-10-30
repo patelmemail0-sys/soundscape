@@ -12,7 +12,7 @@ from .errors import ConfigError
 
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 POSITIONS = ("left", "right", "third", "fourth")
-ENGINES = ("auto", "pipewire", "pulse")
+ENGINES = ("auto", "pipewire", "pulse", "aggregate", "relay")
 SINK_NAME = "soundscape"
 
 
@@ -52,7 +52,7 @@ class Speaker:
 @dataclass
 class Config:
     speakers: List[Speaker] = field(default_factory=list)
-    engine: str = "auto"  # auto | pipewire | pulse
+    engine: str = "auto"  # auto | pipewire | pulse (Linux) | aggregate | relay (macOS)
     stereo_split: bool = False  # left speaker gets L channel only, right gets R only (PipeWire engine)
     latency_compensate: bool = True  # let the engine align speakers from their reported latency
     set_default_sink: bool = True  # route all desktop audio through Soundscape while it is up

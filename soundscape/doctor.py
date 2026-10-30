@@ -28,6 +28,9 @@ class Check:
 
 def run_checks(runner: Runner, bluez: Optional[BlueZ] = None, pulse: Optional[PulseCtl] = None,
                pw: Optional[PipeWireCtl] = None) -> List[Check]:
+    from . import platform as plat
+    if plat.is_mac():
+        return run_mac_checks(runner, bluez, pulse)
     bluez = bluez or BlueZ(runner)
     pulse = pulse or PulseCtl(runner)
     pw = pw or PipeWireCtl(runner)
@@ -108,6 +111,50 @@ def run_checks(runner: Runner, bluez: Optional[BlueZ] = None, pulse: Optional[Pu
     else:
         checks.append(Check(WARN, "no media player found", "`soundscape play` needs mpv or ffplay; other apps still work",
                             INSTALL_HINTS["mpv"]))
+    return checks
+
+
+def run_mac_checks(runner: Runner, bluetooth=None, audio=None) -> List[Check]:
+    from .mac.audio import BLACKHOLE_HINT, MacAudio
+    from .mac.bluetooth import BLUEUTIL_HINT, MacBluetooth
+    bluetooth = bluetooth or MacBluetooth(runner)
+    audio = audio or MacAudio(runner)
+    checks: List[Check] = []
+    if runner.which("blueutil"):
+        checks.append(Check(OK, "blueutil found"))
+    else:
+        checks.append(Check(WARN, "blueutil missing", "Soundscape cannot connect or pair speakers itself; "
+                            "connect them from the Bluetooth menu instead", BLUEUTIL_HINT))
+    checks.append(Check(OK if runner.which("afplay") else WARN, "afplay " + ("found" if runner.which("afplay") else "missing"),
+                        "" if runner.which("afplay") else "needed for test tones and sync"))
+    try:
+        info = audio.info()
+        checks.append(Check(OK, "CoreAudio reachable", f"default output: {info.default_sink or 'none'}"))
+        bh = audio.blackhole()
+        if bh:
+            checks.append(Check(OK, "BlackHole installed: relay engine available",
+                                "sync trims and stereo split are enabled"))
+        else:
+            checks.append(Check(WARN, "BlackHole not installed: aggregate engine only",
+                                "both speakers will play, but sync trims cannot be applied", BLACKHOLE_HINT))
+        outputs = [d for d in audio.ca.devices() if d.output_channels and d.is_bluetooth]
+        checks.append(Check(OK if outputs else WARN, f"{len(outputs)} Bluetooth audio output(s) connected",
+                            ", ".join(d.name for d in outputs[:6]),
+                            "" if outputs else "connect the speakers in the Bluetooth menu, then run again"))
+    except SoundscapeError as exc:
+        checks.append(Check(FAIL, "CoreAudio not reachable", exc.message, exc.hint))
+    try:
+        devices = bluetooth.devices()
+        audio_devs = [d for d in devices if d.is_audio_sink]
+        checks.append(Check(OK if audio_devs else WARN, f"{len(audio_devs)} paired audio device(s)",
+                            ", ".join(d.label for d in audio_devs[:6]),
+                            "" if audio_devs else "pair the speakers once in System Settings > Bluetooth"))
+    except SoundscapeError as exc:
+        checks.append(Check(WARN, "could not list Bluetooth devices", exc.message, exc.hint))
+    if runner.which("mpv") or runner.which("ffplay"):
+        checks.append(Check(OK, "player: " + ("mpv" if runner.which("mpv") else "ffplay")))
+    else:
+        checks.append(Check(OK, "player: afplay (built in)", "install mpv for playlists and URLs: brew install mpv"))
     return checks
 
 

@@ -22,7 +22,9 @@ def synthetic_recording(latency_a: float, latency_b: float, lead: float = 0.6, s
 def install_mic(runner, data: bytes):
     def factory(argv, kwargs):
         kwargs["stdout"].write(data)
-        return FakeProcess(argv, kwargs)
+        proc = FakeProcess(argv, kwargs)
+        proc.returncode = 0  # parec "finishes" at once so the recorder does not wait in real time
+        return proc
     runner.on_popen("parec", factory)
 
 

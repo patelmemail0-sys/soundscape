@@ -2,10 +2,11 @@
 
 **One audio source, two Bluetooth speakers, in sync.**
 
-Soundscape joins two (or more) ordinary Bluetooth speakers into a single output on a Linux
-machine. Everything you play, from Spotify in a browser to a local file, comes out of both
-speakers at the same time, aligned to within a few milliseconds, with no EQ or other
-processing applied to the audio.
+Soundscape joins two (or more) ordinary Bluetooth speakers into a single output on a **Mac**
+or a **Linux** machine. Everything you play, from Spotify in a browser to a local file, comes
+out of both speakers at the same time, aligned to within a few milliseconds, with no EQ or
+other processing applied to the audio. An **iPhone** cannot do this on its own, but it can
+AirPlay to the Mac and let Soundscape take it from there (see below).
 
 ```
   Spotify / browser / mpv / anything
@@ -59,12 +60,27 @@ Be honest with yourself about Bluetooth before you start:
   the room, sound itself takes about 3 ms per metre, so re-run `sync` after rearranging.
 * **Two A2DP streams share one radio.** Most adapters cope at standard SBC or AAC bitrates;
   if you hear dropouts, see [Troubleshooting](docs/TROUBLESHOOTING.md#dropouts).
-* **Linux only.** Android, iOS and Windows do not expose multi-A2DP routing to apps, which
-  is why a cheap Linux box (a Raspberry Pi works) is the right device for this job.
+* **Mac or Linux as the hub.** iOS, Android and Windows do not let apps route audio to two
+  Bluetooth speakers at once. Use the MacBook (or a Raspberry Pi) as the hub and send the
+  phone's audio to it.
 
 ## Requirements
 
-* Linux with **PipeWire** (recommended, 0.3.65 or newer, 1.0+ ideal) or **PulseAudio**.
+### macOS
+
+* macOS 12 or newer, Python 3.9+ (`xcode-select --install` or `brew install python`).
+* Optional but recommended:
+  * `brew install blueutil` so Soundscape can connect and pair speakers itself. Without it
+    you connect them from the Bluetooth menu and Soundscape does the rest.
+  * **BlackHole** (free virtual audio device): `brew install blackhole-2ch` or the installer
+    from existential.audio. It unlocks the relay engine, which is what makes sync trims and
+    stereo split possible. Without it Soundscape uses a plain CoreAudio aggregate device:
+    both speakers play, drift-corrected, but a mixed pair cannot be trimmed into sync.
+  * `brew install mpv` for `soundscape play` with playlists and URLs (`afplay` is used otherwise).
+
+### Linux
+
+* **PipeWire** (recommended, 0.3.65 or newer, 1.0+ ideal) or **PulseAudio**.
   Every mainstream distro since 2022 ships PipeWire by default.
 * **BlueZ** (`bluetoothctl`) and **systemd** (`busctl`).
 * `pulseaudio-utils` for `pactl`/`paplay`/`parec` (works with PipeWire too).
@@ -88,7 +104,7 @@ sudo dnf install bluez pipewire pipewire-pulseaudio wireplumber pulseaudio-utils
 ```bash
 git clone https://github.com/patelmemail0-sys/soundscape.git
 cd soundscape
-./install.sh            # pipx if available, otherwise pip --user; add --service for autostart
+./install.sh            # macOS or Linux; add --service for autostart
 ```
 
 Or by hand:
@@ -148,6 +164,22 @@ soundscape offset right 12.5    # or set a trim directly, in milliseconds (live)
 
 Trims are stored in the config and re-applied on every `up`.
 
+## iPhone
+
+No iOS app can play to two Bluetooth speakers at once; Apple reserves multi-output for
+AirPods "Share Audio" and AirPlay 2 speakers. The way that works is to make the Mac the hub:
+
+1. On the Mac: System Settings > General > AirDrop & Handoff > **AirPlay Receiver**: on
+   (allow "Current User" or "Anyone on the same network").
+2. On the Mac: `soundscape up` (both Bluetooth speakers are now the Mac's output).
+3. On the iPhone: open Control Center, tap the AirPlay icon in the audio card, pick the
+   MacBook.
+
+Music from any iPhone app now plays through both speakers. Expect about two seconds of
+AirPlay buffering on top of Bluetooth's own latency, which is fine for music. If your
+speakers are the same model, their maker's own party/stereo mode (JBL PartyBoost, Bose
+SimpleSync, Sony Party Connect, UE PartyUp) is the only way to do it straight from the phone.
+
 ## Stereo across the room
 
 By default both speakers play full stereo, which is what you want for a kitchen and a
@@ -158,7 +190,7 @@ the right channel to the other:
 soundscape up --stereo
 ```
 
-This needs the PipeWire engine (the default on PipeWire systems).
+This needs the PipeWire engine on Linux or the relay engine (BlackHole) on macOS.
 
 ## Phone remote
 
@@ -173,13 +205,24 @@ only expose it on a network you trust; the default bind is `127.0.0.1`.
 ## Keep it running
 
 ```bash
-./install.sh --service          # installs and enables a systemd *user* unit
-systemctl --user status soundscape
+./install.sh --service          # systemd user unit on Linux, LaunchAgent on macOS
 ```
 
 The daemon brings the speakers up at login, reconnects them when they drop, rebuilds the
 output, and takes everything down cleanly on stop. Powered-off speakers are retried with a
-backoff, so you can simply switch them on and off.
+backoff, so you can simply switch them on and off. On macOS check `/tmp/soundscape-daemon.log`;
+on Linux `systemctl --user status soundscape`.
+
+## macOS notes
+
+* The aggregate device has no system volume slider, so the keyboard volume keys do nothing
+  while Soundscape is up with the aggregate engine. Use `soundscape volume 40`, the phone
+  remote, or the speakers' own buttons. With the relay engine the keys control BlackHole and
+  work normally.
+* Both engines leave the audio untouched: CoreAudio mixes in 32-bit float and resamples only
+  for drift correction. The relay engine adds exactly one buffer (about 21 ms at 1024 frames)
+  of latency and shifts each speaker by whole samples; nothing else.
+* First run of `sync --auto` will make macOS ask for microphone access for your terminal.
 
 ## All commands
 
@@ -210,7 +253,15 @@ what is happening.
 
 ## How it works
 
-Two engines, chosen automatically:
+Four engines, chosen automatically by platform:
+
+* **Aggregate engine** (macOS, built in). Creates a CoreAudio aggregate device of the two
+  speakers with drift compensation, the first speaker as clock master, and makes it the
+  default output. Destroyed again on `down`.
+* **Relay engine** (macOS with BlackHole). BlackHole becomes the default output; a small relay
+  process builds a private aggregate of BlackHole plus the speakers and copies each block to
+  every speaker with a per-speaker delay in whole samples, adjustable live over a Unix socket.
+  Stereo split happens here too.
 
 * **PipeWire engine** (default on PipeWire). Soundscape starts a second `pipewire` process
   with a generated config that lives alongside your normal daemon. It hosts a
@@ -223,11 +274,11 @@ Two engines, chosen automatically:
   then `speex-float-10`). Manual trims become `set-port-latency-offset` leads on the other
   speaker, which the combine sink's rate control then honours.
 
-Bluetooth is driven through BlueZ's D-Bus API with `busctl --json` (pairing, trust,
-connect, status) and a long-lived `bluetoothctl` for discovery. Every external tool is
-behind one `Runner` object, which is what lets the test-suite emulate BlueZ, pactl and
-PipeWire and run the real orchestration end to end. Details in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Bluetooth is driven through BlueZ's D-Bus API on Linux (`busctl --json` plus a long-lived
+`bluetoothctl` for discovery) and through `blueutil` / `system_profiler` on macOS. Every
+external tool and every CoreAudio call sits behind one injectable seam, which is what lets
+the test-suite emulate BlueZ, pactl, PipeWire and the CoreAudio HAL and run the real
+orchestration end to end. Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Development
 
@@ -243,11 +294,11 @@ PipeWire config is validated against PipeWire's own parser in CI when available.
 
 ## Status
 
-0.1.0. Built and unit-tested against emulated BlueZ/PipeWire/PulseAudio and validated
-against PipeWire 1.0.5's config parser and module binaries. It has not yet been run against
-physical speakers by the author; the first thing to do with real hardware is
-`soundscape doctor`, then `soundscape setup`, and file an issue with the output of
-`soundscape -v up` if something misbehaves.
+0.2.0. Linux and macOS backends, unit-tested against emulated BlueZ, PipeWire, PulseAudio
+and CoreAudio; the Linux engine is additionally validated against a live PipeWire 1.0.5 in
+CI. Neither backend has been run against physical speakers by the author yet. The first
+thing to do with real hardware is `soundscape doctor`, then `soundscape setup`, and file an
+issue with the output of `soundscape -v up` if something misbehaves.
 
 ## License
 

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LaunchAgent: keeps both Bluetooth speakers joined into the Soundscape output on macOS.
+     "install.sh" with the service option installs it; by hand:
+       cp launchd/com.soundscape.daemon.plist ~/Library/LaunchAgents/
+       launchctl load -w ~/Library/LaunchAgents/com.soundscape.daemon.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.soundscape.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>exec "$(command -v soundscape || echo "$HOME/.local/bin/soundscape")" daemon --interval 10</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/soundscape-daemon.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/soundscape-daemon.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

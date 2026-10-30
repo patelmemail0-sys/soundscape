@@ -25,6 +25,8 @@ class ServerInfo:
 
     @property
     def flavour(self) -> str:
+        if "coreaudio" in self.server_name.lower():
+            return "CoreAudio"
         return "PipeWire" if self.is_pipewire else "PulseAudio"
 
 
@@ -50,7 +52,10 @@ class Sink:
             if re.fullmatch(r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", value or ""):
                 return value.upper()
         m = re.search(r"bluez_(?:output|sink)\.(([0-9A-Fa-f]{2}_){5}[0-9A-Fa-f]{2})", self.name)
-        return m.group(1).replace("_", ":").upper() if m else None
+        if m:
+            return m.group(1).replace("_", ":").upper()
+        m = re.match(r"^(([0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2})(:output)?$", self.name)  # macOS device UID
+        return m.group(1).replace("-", ":").upper() if m else None
 
 
 @dataclass
@@ -372,3 +377,44 @@ class PulseCtl:
 
     def default_source(self) -> str:
         return self.info().default_source
+
+    # -- playback / capture (used by test tones and sync calibration) --------
+    def play_file(self, path, sink: Optional[str] = None, wait: bool = True):
+        """Play a WAV with paplay to ``sink`` (or the default sink)."""
+        import subprocess
+        self.runner.require("paplay")
+        argv = ["paplay"] + (["--device", sink] if sink else []) + [str(path)]
+        proc = self.runner.popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if wait:
+            proc.wait()
+        return proc
+
+    RECORD_RATE = 16000
+
+    def record(self, seconds: float, source: Optional[str] = None):
+        """Record mono float samples with parec. Returns (samples, rate)."""
+        import struct as _struct
+        import subprocess
+        import tempfile
+        import time as _time
+        self.runner.require("parec")
+        source = source or self.default_source()
+        if not source:
+            raise AudioError("no microphone source found", "pass --source <name> (see `pactl list short sources`)")
+        with tempfile.NamedTemporaryFile(prefix="soundscape-mic-", suffix=".raw", delete=False) as fh:
+            path = fh.name
+        with open(path, "wb") as out:
+            proc = self.runner.popen(["parec", "--device", source, "--format=s16le", f"--rate={self.RECORD_RATE}",
+                                      "--channels=1", "--raw"], stdout=out, stderr=subprocess.DEVNULL)
+            deadline = _time.monotonic() + seconds
+            while _time.monotonic() < deadline and proc.poll() is None:
+                _time.sleep(0.05)
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        data = open(path, "rb").read()
+        count = len(data) // 2
+        samples = [v / 32768.0 for v in _struct.unpack(f"<{count}h", data[: count * 2])]
+        return samples, self.RECORD_RATE

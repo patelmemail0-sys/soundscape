@@ -130,6 +130,20 @@ def resample_linear(signal: Sequence[float], src_rate: int, dst_rate: int) -> Li
     return out
 
 
+def decimate(signal: Sequence[float], src_rate: int, dst_rate: int) -> List[float]:
+    """Reduce the sample rate; integer ratios use a box filter (cheap anti-aliasing)."""
+    if src_rate == dst_rate:
+        return list(signal)
+    if src_rate % dst_rate == 0:
+        step = src_rate // dst_rate
+        n = len(signal) // step
+        if _np is not None:
+            arr = _np.asarray(signal[: n * step], dtype=float).reshape(n, step)
+            return arr.mean(axis=1).tolist()
+        return [sum(signal[i * step:(i + 1) * step]) / step for i in range(n)]
+    return resample_linear(signal, src_rate, dst_rate)
+
+
 def measure_gap(recording: Sequence[float], template: Sequence[float], rate: int,
                 first_at_s: float, second_at_s: float, max_latency_s: float = 1.2
                 ) -> Tuple[float, float, float]:
@@ -154,7 +168,7 @@ def best_offset_ms(gap_s: float, nominal_gap_s: float) -> float:
     return round((gap_s - nominal_gap_s) * 1000.0, 2)
 
 
-__all__ = ["cross_correlate", "measure_gap", "best_offset_ms", "resample_linear", "normalize",
+__all__ = ["cross_correlate", "measure_gap", "best_offset_ms", "resample_linear", "decimate", "normalize",
            "peak_in_window", "refine_peak", "confidence"]
 
 

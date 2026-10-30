@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Dict, List, Optional
 
+from . import platform as plat
 from .bluez import BlueZ, Device
 from .config import Config, Speaker
 from .engine import ENGINES, Bound, Engine, EngineState, choose_engine
@@ -23,14 +24,24 @@ def _quiet(_: str) -> None:
 class Session:
     def __init__(self, runner: Optional[Runner] = None, paths: Optional[Paths] = None,
                  log: Log = _quiet, config: Optional[Config] = None,
-                 bluez: Optional[BlueZ] = None, pulse: Optional[PulseCtl] = None,
+                 bluez: Any = None, pulse: Any = None,
                  engine: Optional[Engine] = None, sleep: Callable[[float], None] = time.sleep):
         self.runner = runner or Runner()
         self.paths = (paths or Paths()).ensure()
         self.log = log
         self.config = config if config is not None else Config.load(self.paths.config_file)
-        self.bluez = bluez or BlueZ(self.runner, sleep=sleep)
-        self.pulse = pulse or PulseCtl(self.runner)
+        self.platform = plat.current()
+        if bluez is None or pulse is None:
+            if self.platform == plat.MAC:
+                from .mac.audio import MacAudio
+                from .mac.bluetooth import MacBluetooth
+                bluez = bluez or MacBluetooth(self.runner, sleep=sleep)
+                pulse = pulse or MacAudio(self.runner)
+            else:
+                bluez = bluez or BlueZ(self.runner, sleep=sleep)
+                pulse = pulse or PulseCtl(self.runner)
+        self.bluez: Any = bluez  # Bluetooth backend (BlueZ on Linux, MacBluetooth on macOS)
+        self.pulse: Any = pulse  # audio backend (PulseCtl on Linux, MacAudio on macOS)
         self._engine = engine
         self._sleep = sleep
         self._server: Optional[ServerInfo] = None
@@ -57,8 +68,23 @@ class Session:
             self._server = self.pulse.info()
         return self._server
 
+    @property
+    def bt(self):
+        return self.bluez
+
+    @property
+    def audio(self):
+        return self.pulse
+
     def engine(self, state: Optional[EngineState] = None) -> Engine:
         if self._engine is not None:
+            return self._engine
+        if self.platform == plat.MAC:
+            from .mac.engine import MAC_ENGINES, choose_mac_engine
+            if state is not None and state.engine in MAC_ENGINES:
+                self._engine = MAC_ENGINES[state.engine](self.runner, self.pulse, self.paths, self.log)
+            else:
+                self._engine = choose_mac_engine(self.config, self.runner, self.pulse, self.paths, self.log)
             return self._engine
         if state is not None and state.engine in ENGINES:
             self._engine = ENGINES[state.engine](self.runner, self.pulse, self.paths, self.log)
@@ -169,10 +195,17 @@ class Session:
         self.config.normalize_offsets()
         self.set_offset(early.address, early.offset_ms)
 
+    def _master_sink(self) -> str:
+        state = self.state()
+        if hasattr(self.pulse, "group"):
+            self.pulse.group = [o.sink for o in state.outputs] if state else []
+        return state.sink_name if state else self.config.sink_name
+
     def set_volume(self, selector: str, percent: int) -> str:
         if selector in ("all", "master", "both"):
-            self.pulse.set_volume(self.config.sink_name, percent)
-            return self.config.sink_name
+            master = self._master_sink()
+            self.pulse.set_volume(master, percent)
+            return master
         sp = self.config.require(selector)
         sp.volume = percent
         sink = self.pulse.bluetooth_sink(sp.address)
@@ -184,7 +217,7 @@ class Session:
 
     def set_mute(self, selector: str, mute: bool) -> None:
         if selector in ("all", "master", "both"):
-            self.pulse.set_mute(self.config.sink_name, mute)
+            self.pulse.set_mute(self._master_sink(), mute)
             return
         sp = self.config.require(selector)
         sink = self.pulse.bluetooth_sink(sp.address)
@@ -216,15 +249,20 @@ class Session:
             out["bluetooth_error"] = exc.message
         if state:
             out["engine"] = state.engine
-            out["up"] = any(s.name == state.sink_name for s in sinks)
+            try:
+                out["up"] = self.engine(state).alive(state)
+            except SoundscapeError:
+                out["up"] = any(s.name == state.sink_name for s in sinks)
             out["pid"] = state.pid
             out["stereo_split"] = state.stereo_split
             out["manual_delays"] = state.with_delays
             out["is_default"] = bool(info and info.default_sink == state.sink_name)
-        master = next((s for s in sinks if s.name == self.config.sink_name), None)
+        master_name = state.sink_name if state else self.config.sink_name
+        master = next((s for s in sinks if s.name == master_name), None)
         if master:
             out["volume"] = master.volume_percent
             out["muted"] = master.mute
+        out["platform"] = self.platform
         for sp in self.config.speakers:
             dev = devices.get(sp.address)
             sink = next((s for s in sinks if s.bluetooth_address == sp.address), None)

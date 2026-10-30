@@ -13,7 +13,7 @@ import signal
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .config import Config, Speaker
 from .errors import AudioError
@@ -121,8 +121,9 @@ def kill_pid(pid: int, marker: str, grace: float = 3.0) -> bool:
 class Engine:
     name = "base"
 
-    def __init__(self, runner: Runner, pulse: PulseCtl, paths: Paths, log: Log):
-        self.runner, self.pulse, self.paths, self.log = runner, pulse, paths, log
+    def __init__(self, runner: Runner, pulse: Any, paths: Paths, log: Log):
+        self.runner, self.paths, self.log = runner, paths, log
+        self.pulse: Any = pulse  # PulseCtl on Linux, MacAudio on macOS (same method names)
 
     def build(self, bound: List[Bound], cfg: Config) -> EngineState:  # pragma: no cover - abstract
         raise NotImplementedError

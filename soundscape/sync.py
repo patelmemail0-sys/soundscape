@@ -17,11 +17,12 @@ import subprocess
 import sys
 import tempfile
 import termios
+import threading
 import time
 import tty
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from . import dsp, tones
 from .config import Speaker
@@ -29,7 +30,8 @@ from .errors import AudioError, ConfigError
 from .session import Session
 
 Log = Callable[[str], None]
-RECORD_RATE = 16000
+RECORD_RATE = 16000  # analysis rate; recordings at other rates are decimated to this
+LEAD_S = 0.6  # recording starts this long before playback
 
 
 @dataclass
@@ -81,58 +83,62 @@ class Calibrator:
         sink_a, sink_b = self._sink_of(a), self._sink_of(b)
         workdir = workdir or Path(tempfile.mkdtemp(prefix="soundscape-"))
         track = tones.calibration_track(workdir / "calibration.wav")
-        raw = workdir / "mic.raw"
-        self.runner.require("parec")
-        if not source:
-            source = self.pulse.default_source()
-        if not source:
-            raise AudioError("no microphone source found", "pass --source <name> (see `pactl list short sources`)")
-        if sink in source or any(s in source for s in (sink_a, sink_b)):
+        source = source or self.pulse.default_source()
+        if source and (sink in source or any(s in source for s in (sink_a, sink_b)) or source.endswith(".monitor")):
             raise AudioError(f"recording source {source} is a loopback of the speakers, not a microphone",
                              "pass --source with a real microphone")
 
-        self.log(f"recording from {source}; keep the room quiet for ~7 seconds")
-        with open(raw, "wb") as fh:
-            rec = self.runner.popen(["parec", "--device", source, "--format=s16le",
-                                     f"--rate={RECORD_RATE}", "--channels=1", "--raw"],
-                                    stdout=fh, stderr=subprocess.DEVNULL)
-            try:
-                self._sleep(0.6)  # let the capture stream settle before the first chirp
-                self.pulse.set_mute(sink_b, True)
-                self.pulse.set_mute(sink_a, False)
-                started = time.monotonic()
-                player = self._play(track, sink)
-                self._sleep(tones.CALIBRATION_SWITCH_S)
-                self.pulse.set_mute(sink_a, True)
-                self.pulse.set_mute(sink_b, False)
-                remaining = tones.CALIBRATION_TOTAL_S + 0.8 - (time.monotonic() - started)
-                self._sleep(max(0.0, remaining))
-                try:
-                    player.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    player.kill()
-            finally:
-                self.pulse.set_mute(sink_a, False)
-                self.pulse.set_mute(sink_b, False)
-                rec.terminate()
-                try:
-                    rec.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    rec.kill()
+        self.log(f"recording from {source or 'the default microphone'}; keep the room quiet for ~7 seconds")
+        total = LEAD_S + tones.CALIBRATION_TOTAL_S + 0.8
+        result: Dict[str, Any] = {}
 
-        data = raw.read_bytes()
-        if len(data) < RECORD_RATE * 2 * 4:
+        def recorder() -> None:
+            try:
+                result["data"] = self.pulse.record(total, source or None)
+            except Exception as exc:  # surfaced after the playback sequence
+                result["error"] = exc
+
+        thread = threading.Thread(target=recorder, daemon=True)
+        thread.start()
+        try:
+            self._sleep(LEAD_S)  # let the capture stream settle before the first chirp
+            self.pulse.set_mute(sink_b, True)
+            self.pulse.set_mute(sink_a, False)
+            started = time.monotonic()
+            player = self._play(track, sink)
+            self._sleep(tones.CALIBRATION_SWITCH_S)
+            self.pulse.set_mute(sink_a, True)
+            self.pulse.set_mute(sink_b, False)
+            remaining = tones.CALIBRATION_TOTAL_S + 0.8 - (time.monotonic() - started)
+            self._sleep(max(0.0, remaining))
+            try:
+                player.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                player.kill()
+        finally:
+            self.pulse.set_mute(sink_a, False)
+            self.pulse.set_mute(sink_b, False)
+        thread.join(timeout=total + 10)
+        if "error" in result:
+            raise result["error"]  # type: ignore[misc]
+        if "data" not in result:
+            raise AudioError("the recording did not finish", "try again; if it persists pass --source")
+        recording: List[float]
+        rate: int
+        recording, rate = result["data"]  # type: ignore[assignment]
+        if rate != RECORD_RATE:
+            recording = dsp.decimate(recording, rate, RECORD_RATE)
+            rate = RECORD_RATE
+        if len(recording) < rate * 4:
             raise AudioError("the recording is too short; the microphone did not deliver audio",
-                             "check `pactl list short sources` and pass --source")
-        recording = tones.pcm_s16le_to_floats(data)
-        template = tones.chirp(RECORD_RATE)
-        # chirps were sent at 1.0 s and 4.0 s *after paplay started*; the recorder started
-        # ~0.6 s earlier, so search from those marks minus a little slack.
-        lead = 0.6
+                             "check the input device and pass --source")
+        template = tones.chirp(rate)
+        # chirps were sent at 1.0 s and 4.0 s *after playback started*; the recorder started
+        # LEAD_S earlier, so search from those marks minus a little slack.
         gap_s, c1, c2 = dsp.measure_gap(
-            recording, template, RECORD_RATE,
-            first_at_s=tones.CALIBRATION_FIRST_S + lead - 0.3,
-            second_at_s=tones.CALIBRATION_SECOND_S + lead - 0.3,
+            recording, template, rate,
+            first_at_s=tones.CALIBRATION_FIRST_S + LEAD_S - 0.3,
+            second_at_s=tones.CALIBRATION_SECOND_S + LEAD_S - 0.3,
             max_latency_s=1.5)
         nominal = tones.CALIBRATION_SECOND_S - tones.CALIBRATION_FIRST_S
         gap_ms = dsp.best_offset_ms(gap_s, nominal)

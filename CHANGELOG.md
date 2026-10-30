@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 - 2026-10-30
+
+macOS support.
+
+* `soundscape` now runs on macOS: Bluetooth through `blueutil` (or read-only via
+  `system_profiler`), audio through a ctypes CoreAudio binding.
+* Aggregate engine: CoreAudio aggregate device of both speakers, drift-corrected, as default
+  output. Nothing to install.
+* Relay engine (with BlackHole): sample-accurate per-speaker delay, live adjustable, plus
+  stereo split; `sync --auto` can apply what it measures on a Mac too.
+* Microphone recording and test tones on macOS (HAL IOProc capture, `afplay`).
+* LaunchAgent for autostart; `install.sh` handles both platforms.
+* README: iPhone users AirPlay to the Mac and let Soundscape drive the speakers.
+* Calibrator made backend-agnostic; recordings at any rate are decimated to 16 kHz.
+
 ## 0.1.0 - 2026-10-30
 
 First release.

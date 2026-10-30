@@ -82,6 +82,29 @@ PulseAudio has no per-output delay, so a trim of *X ms on speaker A* is expresse
 as hidden downstream latency and feeds that port earlier, which is the same thing. Offsets
 are normalised so the most-delayed speaker is at 0 and no lead is negative.
 
+### macOS backend (`soundscape/mac/`)
+The session code is shared; macOS swaps in objects with the same method names.
+
+* `mac/coreaudio.py`: a ctypes binding of the CoreAudio HAL (`HAL`) and the device logic on
+  top (`CoreAudio`): enumerate devices, map a Bluetooth speaker to its output device by UID
+  (`AA-BB-CC-DD-EE-FF:output`), default output, volume (`vmvc`, then `volm`), mute, aggregate
+  device create/destroy with per-subdevice drift compensation and a chosen clock master.
+  Tests inject a fake HAL, so every method is covered without a Mac.
+* `mac/bluetooth.py`: `blueutil` for actions (connect, pair, inquiry, unpair) with a
+  `system_profiler -json` fallback for listing and for knowing which devices are speakers.
+* `mac/audio.py` (`MacAudio`): the `PulseCtl` counterpart. `play_file` uses `afplay`, switching
+  the default output temporarily when a specific device is requested; `record` captures the
+  default input through a HAL IOProc.
+* `mac/engine.py`: `AggregateEngine` (public aggregate of the speakers, first speaker as clock
+  master, drift compensation on the others, set as default output) and `RelayEngine`
+  (BlackHole becomes the default output; a relay process is spawned).
+* `mac/ioproc.py`: the relay process. It creates a *private* aggregate of BlackHole + speakers,
+  attaches an IOProc, and on every cycle appends the BlackHole block to a history buffer and
+  copies the block `delay_k` frames back to each speaker (stereo split: one channel to both
+  drivers). The maths lives in the pure-Python `Mixer`, unit-tested; the process disables the
+  garbage collector while the real-time callback is attached. A Unix socket takes
+  `delay <uid> <ms>`, `stereo on|off`, `status`, `ping`, `quit`.
+
 ### `session.Session`
 The one place that knows the whole flow:
 
@@ -138,7 +161,10 @@ request handling is separated from sockets so it is unit-tested directly.
   a few to tens of ms that calibration removes. Expect 1 to 3 ms after `sync --auto`.
 * Two A2DP streams share one radio. Standard SBC/AAC bitrates are fine on most adapters;
   SBC-XQ at high bitrates on both speakers may not be.
-* Stereo split needs the PipeWire engine.
+* Stereo split needs the PipeWire engine (Linux) or the relay engine (macOS).
+* The macOS aggregate engine cannot trim one speaker; install BlackHole for the relay engine.
+* The relay IOProc runs Python inside CoreAudio's real-time thread. It only does memmoves
+  on a 1024-frame buffer, but a Swift relay is the obvious next step if glitches show up.
 * The PulseAudio engine's trims rely on `set-port-latency-offset`, which pipewire-pulse
   may accept but not act on; on PipeWire systems install `pipewire-bin` to get the native
   engine instead.

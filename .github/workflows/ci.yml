@@ -20,6 +20,19 @@ jobs:
       - run: ruff check soundscape tests
       - run: pytest -q --ignore=tests/live
 
+  unit-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e '.[dev]'
+      - run: pytest -q --ignore=tests/live
+      # the real CoreAudio binding loads and enumerates devices on the runner
+      - run: python -c "from soundscape.mac.coreaudio import CoreAudio; ds = CoreAudio().devices(); print(len(ds), 'devices'); print([(d.name, d.transport) for d in ds])"
+      - run: SOUNDSCAPE_PLATFORM=mac soundscape doctor || true
+
   live-pipewire:
     # Real PipeWire + WirePlumber + pipewire-pulse, with null sinks standing in for speakers.
     runs-on: ubuntu-24.04

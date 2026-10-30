@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import signal
-import subprocess
 import sys
 import tempfile
 import time
@@ -35,7 +34,6 @@ def err(msg: str) -> None:
 
 def play_position_tones(session: Session, only: Optional[str] = None, log: Log = say) -> None:
     """Play a distinct tone directly to each speaker so the user can tell left from right."""
-    session.runner.require("paplay")
     workdir = Path(tempfile.mkdtemp(prefix="soundscape-"))
     speakers = session.config.speakers if not only else [session.config.require(only)]
     for sp in speakers:
@@ -45,9 +43,7 @@ def play_position_tones(session: Session, only: Optional[str] = None, log: Log =
             continue
         path = tones.position_tone(workdir / f"{sp.position}.wav", sp.position)
         log(f"{sp.position}: playing tone on {sp.label} ...")
-        proc = session.runner.popen(["paplay", "--device", sink.name, str(path)],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        proc.wait()
+        session.pulse.play_file(path, sink.name, wait=True)
 
 
 def print_status(status: dict) -> None:
@@ -148,7 +144,9 @@ def cmd_up(session: Session, args: argparse.Namespace) -> int:
         say("all desktop audio now plays through both speakers")
     else:
         say(f"select the output named '{cfg.description}' in your app or sound settings")
-    if state.engine == "pulse":
+    if state.engine == "aggregate":
+        say("tip: install BlackHole (brew install blackhole-2ch) to unlock sync trims and stereo split")
+    elif state.engine in ("pulse", "relay"):
         say("tip: run `soundscape sync --auto` once with a microphone to align the speakers")
     return 0
 
@@ -331,7 +329,7 @@ def _finish_setup(session: Session, args: argparse.Namespace) -> int:
     say("joining the speakers ...")
     session.up()
     say("")
-    if session.runner.which("paplay"):
+    if session.runner.which("paplay") or session.runner.which("afplay"):
         say("playing a low tone on LEFT, then a higher tone on RIGHT")
         play_position_tones(session)
         if _ask("did the low tone come from the speaker you want on the left? [Y/n] ", default="y") == "n":
@@ -341,7 +339,8 @@ def _finish_setup(session: Session, args: argparse.Namespace) -> int:
             session.save_config()
             say("swapped left and right")
             session.up()
-    if session.runner.which("parec") and _ask("\nalign the speakers now using this computer's microphone? [y/N] ", default="n") == "y":
+    can_record = session.runner.which("parec") or session.platform == "mac"
+    if can_record and _ask("\nalign the speakers now using this computer's microphone? [y/N] ", default="n") == "y":
         from .sync import Calibrator
         try:
             Calibrator(session, log=say).auto(passes=1)
@@ -477,11 +476,14 @@ COMMANDS = {
 
 
 def make_session(args: argparse.Namespace, runner: Optional[Runner] = None) -> Session:
-    from .bluez import BlueZ
+    from . import platform as plat
     runner = runner or Runner()
     paths = Paths.under(Path(args.root)) if args.root else Paths()
     log = say if args.verbose or args.command in ("setup", "up", "down", "daemon", "add", "scan") else (lambda _m: None)
-    bluez = BlueZ(runner, adapter=args.adapter)
+    bluez = None
+    if plat.current() != plat.MAC and args.adapter:
+        from .bluez import BlueZ
+        bluez = BlueZ(runner, adapter=args.adapter)
     return Session(runner=runner, paths=paths, log=log, bluez=bluez)
 
 
