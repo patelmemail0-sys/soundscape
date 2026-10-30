@@ -195,6 +195,18 @@ class ControlServer:
             pass
 
 
+MAX_SOCKET_PATH = 100
+
+
+def short_socket_path(preferred: str) -> str:
+    """AF_UNIX paths are limited to ~104 bytes on macOS; fall back to /tmp when needed."""
+    if len(preferred.encode()) <= MAX_SOCKET_PATH:
+        return preferred
+    import hashlib
+    digest = hashlib.sha1(preferred.encode()).hexdigest()[:8]
+    return f"/tmp/soundscape-{os.getuid()}-{digest}.sock"
+
+
 def send_command(path: str, command: str, timeout: float = 3.0) -> str:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)

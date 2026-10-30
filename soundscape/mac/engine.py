@@ -97,7 +97,8 @@ class RelayEngine(Engine):
 
     @property
     def socket_path(self) -> str:
-        return str(self.paths.state_dir / "relay.sock")
+        from .ioproc import short_socket_path
+        return short_socket_path(str(self.paths.state_dir / "relay.sock"))
 
     def _send(self, command: str) -> str:
         from .ioproc import send_command

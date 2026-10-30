@@ -411,6 +411,12 @@ class World:
         self.add_device(MAC_PHONE, "Pixel", paired=True, audio=False)
 
 
+@pytest.fixture(autouse=True)
+def _linux_platform(monkeypatch):
+    """Tests emulate a Linux box unless they explicitly opt into the macOS backend."""
+    monkeypatch.setenv("SOUNDSCAPE_PLATFORM", "linux")
+
+
 @pytest.fixture
 def runner():
     return FakeRunner()

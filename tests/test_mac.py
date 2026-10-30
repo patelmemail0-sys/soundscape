@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import json
 import struct
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import pytest
@@ -17,7 +18,7 @@ from soundscape.mac import coreaudio as ca
 from soundscape.mac.audio import MacAudio, device_to_sink
 from soundscape.mac.bluetooth import MacBluetooth, parse_blueutil_json, parse_system_profiler
 from soundscape.mac.engine import AggregateEngine, RelayEngine, choose_mac_engine
-from soundscape.mac.ioproc import ControlServer, Mixer, Output, build_parser
+from soundscape.mac.ioproc import ControlServer, Mixer, Output, build_parser, short_socket_path
 from soundscape.paths import Paths
 from soundscape.session import Session
 from tests.conftest import MAC_A, MAC_B, FakeProcess, FakeRunner
@@ -403,8 +404,9 @@ def test_relay_engine_spawns_process_and_controls_it(runner, tmp_path, monkeypat
     def spawn(argv, kwargs):
         proc = FakeProcess(argv, kwargs)
         live[proc.pid] = proc
-        (tmp_path / "state").mkdir(exist_ok=True)
-        (tmp_path / "state" / "relay.sock").write_text("")
+        sock = argv[argv.index("--socket") + 1]
+        Path(sock).parent.mkdir(parents=True, exist_ok=True)
+        Path(sock).write_text("")
         return proc
 
     runner.tools.add(__import__("sys").executable)
@@ -484,7 +486,7 @@ def test_mixer_process_writes_output_buffers():
 def test_control_server_commands(tmp_path):
     m = Mixer(rate=48000, outputs=[Output(UID_A, "left"), Output(UID_B, "right")])
     quit_flag = {"q": False}
-    srv = ControlServer(str(tmp_path / "ctl.sock"), m, on_quit=lambda: quit_flag.__setitem__("q", True))
+    srv = ControlServer(short_socket_path(str(tmp_path / "ctl.sock")), m, on_quit=lambda: quit_flag.__setitem__("q", True))
     try:
         assert srv.handle("ping") == "pong"
         assert srv.handle(f"delay {UID_B} 12.5").startswith("ok 12.500 600")
@@ -502,15 +504,23 @@ def test_control_server_over_socket(tmp_path):
 
     from soundscape.mac.ioproc import send_command
     m = Mixer(rate=48000, outputs=[Output(UID_A, "left")])
-    srv = ControlServer(str(tmp_path / "ctl.sock"), m, on_quit=lambda: None)
+    path = short_socket_path(str(tmp_path / "ctl.sock"))
+    srv = ControlServer(path, m, on_quit=lambda: None)
     t = threading.Thread(target=srv.serve, daemon=True)
     t.start()
     try:
-        assert send_command(str(tmp_path / "ctl.sock"), "ping") == "pong"
-        assert send_command(str(tmp_path / "ctl.sock"), f"delay {UID_A} 2").startswith("ok")
-        assert send_command(str(tmp_path / "ctl.sock"), "quit") == "bye"
+        assert send_command(path, "ping") == "pong"
+        assert send_command(path, f"delay {UID_A} 2").startswith("ok")
+        assert send_command(path, "quit") == "bye"
     finally:
         t.join(timeout=3)
+
+
+def test_short_socket_path():
+    assert short_socket_path("/short/relay.sock") == "/short/relay.sock"
+    long = "/private/var/folders/" + "x" * 120 + "/relay.sock"
+    out = short_socket_path(long)
+    assert out.startswith("/tmp/soundscape-") and len(out) < 60
 
 
 def test_ioproc_parser():
