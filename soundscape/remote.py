@@ -270,14 +270,17 @@ class RemoteApp:
             with self._lock:
                 sp = s.remove_speaker(str(body["target"]), forget=bool(body.get("forget")))
             return {"ok": True, "removed": sp.label}
+        if route == "/api/reconnect":
+            target = str(body["target"])
+            return self._run_job(f"Reconnecting {target}", lambda: asdict(s.reconnect_speaker(target)))
         if route == "/api/sync":
             return self._run_job("Calibrating with the microphone", lambda: self._calibrate(body))
         if route == "/api/test":
             from .cli import play_position_tones
-            target = body.get("target") or None
+            tone_target = body.get("target") or None
 
             def tones_job() -> bool:
-                play_position_tones(s, only=target, log=self._log)
+                play_position_tones(s, only=tone_target, log=self._log)
                 return True
             return self._run_job("Playing test tones", tones_job)
         if route == "/api/config":

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4 - 2026-10-30
+
+* A speaker stuck in Bluetooth headset mode (mono, 16 kHz, no bass, out of sync) is
+  reconnected automatically during `up`, which resets it to music (A2DP) mode.
+* `soundscape reconnect <speaker>`, `/api/reconnect`, and a Reconnect button on speaker cards
+  that show headset mode; the signal path marks the speaker.
+
 ## 0.4.3 - 2026-10-30
 
 The "only one speaker plays" fix.

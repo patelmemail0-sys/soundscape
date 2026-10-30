@@ -205,12 +205,48 @@ class Session:
                 self.log("all speakers back in music (A2DP) mode")
                 return refreshed
             if time.monotonic() >= deadline:
-                for b in stuck:
-                    self.log(f"warning: {b.speaker.label} is in headset mode ({b.sink.sample_rate or '?'} Hz); its music "
-                             "output is muted or degraded until nothing records from its microphone. Check System "
-                             "Settings > Sound > Input, and apps with microphone access (browser, FaceTime, Zoom)")
-                return refreshed
+                break
             self._sleep(0.5)
+        # still stuck: a Bluetooth reconnect resets the link to the music (A2DP) profile
+        result = []
+        for b in refreshed:
+            if not b.sink.headset_mode:
+                result.append(b)
+                continue
+            self.log(f"{b.speaker.label} is stuck in headset mode ({b.sink.sample_rate or '?'} Hz); reconnecting it "
+                     "to get music (A2DP) quality back")
+            try:
+                sink = self._reconnect(b.speaker)
+            except SoundscapeError as exc:
+                self.log(f"reconnect of {b.speaker.label} failed: {exc.message}")
+                sink = b.sink
+            if sink.headset_mode:
+                self.log(f"warning: {b.speaker.label} is still in headset mode. Something is recording from its "
+                         "microphone: check System Settings > Sound > Input and apps with microphone access "
+                         "(browser, FaceTime, Zoom, Dictation)")
+            result.append(Bound(b.speaker, sink))
+        return result
+
+    def _reconnect(self, sp: Speaker, settle_s: float = 2.0) -> Sink:
+        """Drop and re-establish the Bluetooth link, then wait for the speaker's sink."""
+        self.bluez.disconnect(sp.address)
+        self._sleep(settle_s)
+        self.bluez.ensure_connected(sp.address, log=self.log, connect_timeout=self.config.connect_timeout_s)
+        sink = self._wait_for_bt_sink(sp)
+        if sink.headset_mode:  # the profile may switch a moment after the device appears
+            deadline = time.monotonic() + 5.0
+            while sink.headset_mode and time.monotonic() < deadline:
+                self._sleep(0.5)
+                sink = self.pulse.bluetooth_sink(sp.address) or sink
+        return sink
+
+    def reconnect_speaker(self, selector: str) -> Speaker:
+        """User-triggered: reconnect one speaker and rebuild if Soundscape is up."""
+        sp = self.config.require(selector)
+        self._reconnect(sp)
+        if self.state():
+            self.up()
+        return sp
 
     def _apply_levels(self, bound: List[Bound]) -> None:
         """Soundscape never limits a speaker: every speaker runs at its own 100% (its physical

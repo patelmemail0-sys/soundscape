@@ -134,6 +134,12 @@ def cmd_add(session: Session, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reconnect(session: Session, args: argparse.Namespace) -> int:
+    sp = session.reconnect_speaker(args.speaker)
+    say(f"reconnected {sp.label}")
+    return 0
+
+
 def cmd_remove(session: Session, args: argparse.Namespace) -> int:
     sp = session.remove_speaker(args.speaker, forget=args.forget)
     say(f"removed {sp.label} ({sp.position})")
@@ -453,6 +459,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--replace", action="store_true")
     s.add_argument("--no-connect", action="store_true", help="only save; do not pair/connect now")
 
+    s = sub.add_parser("reconnect", help="drop and re-establish one speaker's Bluetooth link (fixes headset mode)")
+    s.add_argument("speaker", help="position, address or name")
+
     s = sub.add_parser("remove", help="forget a configured speaker")
     s.add_argument("speaker", help="position (left, right, kitchen...), address or name")
     s.add_argument("--forget", action="store_true", help="also unpair it in BlueZ")
@@ -520,6 +529,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMANDS = {
     "setup": cmd_setup, "doctor": cmd_doctor, "scan": cmd_scan, "add": cmd_add, "remove": cmd_remove,
+    "reconnect": cmd_reconnect,
     "up": cmd_up, "down": cmd_down, "status": cmd_status, "volume": cmd_volume, "mute": cmd_mute,
     "offset": cmd_offset, "sync": cmd_sync, "test": cmd_test, "play": cmd_play, "remote": cmd_ui, "ui": cmd_ui,
     "daemon": cmd_daemon, "config": cmd_config,

@@ -192,6 +192,7 @@ function renderSpeakers(s) {
       el.innerHTML = `
         <h3><span class="badge ${esc(sp.position)}">${esc(sp.position)}</span><span class="name"></span><span class="spacer"></span><span class="st"></span></h3>
         <div class="sub sink"></div>
+        <div class="st bad modewarn" style="display:none;margin-top:6px">headset mode: mono, phone quality, out of sync. <button class="sm" onclick="reconnect('${sp.address}')">Reconnect</button></div>
         <div class="row" style="margin-top:8px"><input type="range" min="0" max="100" class="v" style="flex:1" oninput="vol('${sp.address}',this.value)"><span class="mono vv" style="width:40px;text-align:right"></span></div>
         <div class="row between" style="margin-top:8px">
           <span class="sub">delay</span>
@@ -209,7 +210,8 @@ function renderSpeakers(s) {
     const st = el.querySelector('.st');
     st.textContent = sp.connected ? (sp.muted ? 'muted' : 'connected') : (sp.paired ? 'not connected' : 'not paired');
     st.className = 'st ' + (sp.connected ? (sp.muted ? 'warn' : 'ok') : 'bad');
-    el.querySelector('.sink').textContent = sp.sink ? sp.sink : 'no audio device yet';
+    el.querySelector('.sink').textContent = sp.sink ? sp.sink + (sp.sample_rate ? ' · ' + (sp.sample_rate / 1000) + ' kHz' : '') : 'no audio device yet';
+    el.querySelector('.modewarn').style.display = sp.mode === 'headset' ? 'block' : 'none';
     const v = el.querySelector('.v'); if (sp.volume != null && document.activeElement !== v) { v.value = sp.volume; el.querySelector('.vv').textContent = sp.volume + '%'; }
     el.querySelector('.o').textContent = (sp.offset_ms || 0).toFixed(1) + ' ms';
   }
@@ -227,12 +229,12 @@ function renderPath(s) {
   out += node(260, mid, 220, 'Soundscape', up ? `${s.engine} engine · float32 mix` : 'down', up);
   s.speakers.forEach((sp, i) => {
     const y = 40 + i * 46 + (h - 80 - (n - 1) * 46) / 2;
-    const on = up && sp.connected && sp.sink;
+    const on = up && sp.connected && sp.sink && sp.mode !== 'headset';
     out += `<path d="M480 ${mid} C 560 ${mid}, 560 ${y}, 640 ${y}" fill="none" stroke="${on ? 'var(--acc)' : 'var(--line)'}" stroke-width="3"/>`;
     const d = (sp.offset_ms || 0);
     out += `<rect x="640" y="${y - 14}" width="96" height="28" rx="8" fill="var(--bg)" stroke="${d ? 'var(--acc2)' : 'var(--line)'}"/><text x="688" y="${y + 4}" text-anchor="middle" class="mono">+${d.toFixed(1)} ms</text>`;
     out += `<line x1="736" y1="${y}" x2="790" y2="${y}" stroke="${on ? 'var(--acc)' : 'var(--line)'}" stroke-width="3"/>`;
-    out += node(790, y, 190, sp.name, `${sp.position}${sp.volume != null ? ' · ' + sp.volume + '%' : ''}${sp.connected ? '' : ' · offline'}`, on);
+    out += node(790, y, 190, sp.name, `${sp.position}${sp.volume != null ? ' · ' + sp.volume + '%' : ''}${sp.connected ? '' : ' · offline'}${sp.mode === 'headset' ? ' · HEADSET MODE' : ''}`, on);
   });
   if (!s.speakers.length) out += `<text x="700" y="${mid}" text-anchor="middle" style="fill:var(--mut)">add speakers to see them here</text>`;
   svg.innerHTML = out;
@@ -262,6 +264,7 @@ const vt = {};
 function vol(t, v) { clearTimeout(vt[t]); vt[t] = setTimeout(() => api('/api/volume', {target: t, percent: +v}).then(refresh), 150); }
 function off(t, d) { api('/api/offset', {target: t, delta_ms: d}).then(refresh); }
 function mute(t) { api('/api/mute', {target: t, toggle: true}).then(refresh); }
+function reconnect(t) { job('/api/reconnect', {target: t}); }
 function media(a) { api('/api/media', {action: a}).then(r => { if (r.message) toast('media', r.message, false); }); }
 function cfg(k, v) { api('/api/config', {key: k, value: v}).then(r => { if (r.note) toast(k + ' saved', r.note, false); refresh(); }); }
 async function removeSpeaker(addr, name) { if (!confirm(`Remove ${name} from Soundscape?`)) return; await api('/api/remove', {target: addr}); refresh(); }

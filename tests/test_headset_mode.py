@@ -52,12 +52,45 @@ def test_up_waits_for_headset_speaker_to_recover(session, world):
     assert not any("warning" in m and "headset" in m for m in session.logs)
 
 
-def test_up_warns_when_speaker_stays_in_headset_mode(session, world, monkeypatch):
+def test_up_reconnects_a_speaker_stuck_in_headset_mode(session, world, monkeypatch):
     world.two_speakers(connected=True)
     world.sinks[world.bt_sink_name(MAC_B)]["rate"] = 8000
     monkeypatch.setattr(Session, "HEADSET_RECOVERY_S", 0.0)
-    session.up()
-    assert any("Living Room is in headset mode (8000 Hz)" in m for m in session.logs)
+    state = session.up()
+    assert any("stuck in headset mode (8000 Hz); reconnecting" in m for m in session.logs)
+    methods = [c[-1] for c in world.runner.calls if c[0] == "busctl" and "call" in c]
+    assert "Disconnect" in methods and methods.index("Disconnect") < len(methods) - 1
+    # the re-created sink runs at a music rate and is what the engine was built with
+    assert world.sinks[world.bt_sink_name(MAC_B)]["rate"] == 48000
+    assert state.output_for(MAC_B).sink_index == world.sinks[world.bt_sink_name(MAC_B)]["index"]
+    assert not any("still in headset mode" in m for m in session.logs)
+
+
+def test_reconnect_speaker_rebuilds_when_up(session, world):
+    world.two_speakers(connected=True)
+    first = session.up()
+    sp = session.reconnect_speaker("right")
+    assert sp.address == MAC_B
+    second = session.state()
+    assert second.pid != first.pid  # rebuilt around the fresh sink
+
+
+def test_api_reconnect_job(session, world):
+    from soundscape.remote import RemoteApp
+    world.two_speakers(connected=True)
+    app = RemoteApp(session, log=lambda _m: None, synchronous_jobs=True)
+    status, body, _ = app.handle("POST", "/api/reconnect", {"target": "left"})
+    assert status == 200 and body["job"]["state"] == "done" and body["job"]["result"]["address"] == MAC_A
+
+
+def test_cli_reconnect(runner, world, tmp_path, capsys):
+    from soundscape import cli
+    world.two_speakers(connected=True)
+    root = str(tmp_path)
+    assert cli.main(["--root", root, "add", MAC_A], runner=runner) == 0
+    assert cli.main(["--root", root, "add", MAC_B], runner=runner) == 0
+    assert cli.main(["--root", root, "reconnect", "left"], runner=runner) == 0
+    assert "reconnected Kitchen" in capsys.readouterr().out
 
 
 def test_mac_up_moves_default_input_off_a_speaker(runner, tmp_path, monkeypatch):
