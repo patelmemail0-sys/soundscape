@@ -316,6 +316,11 @@ def test_mac_audio_sinks_volume_mute_and_play(runner):
     audio.group = [UID_A, UID_B]
     audio.set_volume("com.soundscape.soundscape", 30)
     assert audio.get_volume(UID_A) == 30 and audio.get_volume(UID_B) == 30
+    hal_bh = make_hal(blackhole=True)
+    audio_bh = MacAudio(runner, coreaudio=ca.CoreAudio(hal_bh))
+    audio_bh.group = [UID_A, UID_B]
+    audio_bh.set_volume(UID_BH, 45)  # BlackHole is a plain device, not a fan-out
+    assert audio_bh.get_volume(UID_BH) == 45 and audio_bh.get_volume(UID_A) == 100
     with pytest.raises(AudioError):
         audio.set_volume("nope", 10)
     # playing to a specific device switches the default output and back
@@ -420,7 +425,12 @@ def test_relay_engine_spawns_process_and_controls_it(runner, tmp_path, monkeypat
     assert hal.default_output == hal.id_for_uid(UID_BH)
     s.set_offset("right", 12)
     assert any(c == f"delay {UID_B} 12.000" for c in sent)
-    assert s.status()["up"]
+    st = s.status()
+    assert st["up"] and st["master_label"] == "Mac volume (BlackHole)"
+    # master volume is the Mac's volume (BlackHole); speaker sliders stay independent trims
+    s.pulse.set_volume(UID_A, 70)
+    assert s.set_volume("all", 100) == UID_BH
+    assert s.pulse.get_volume(UID_BH) == 100 and s.pulse.get_volume(UID_A) == 70
     s.down()
     assert "quit" in sent and not live
     assert hal.default_output == hal.id_for_uid(UID_BUILTIN)

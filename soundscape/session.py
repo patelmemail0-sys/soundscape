@@ -301,6 +301,12 @@ class Session:
             out["volume"] = master.volume_percent
             out["muted"] = master.mute
         out["platform"] = self.platform
+        if state and state.engine == "relay":
+            out["master_label"] = "Mac volume (BlackHole)"
+        elif state and state.engine == "aggregate":
+            out["master_label"] = "All speakers"
+        else:
+            out["master_label"] = "Master"
         for sp in self.config.speakers:
             dev = devices.get(sp.address)
             sink = next((s for s in sinks if s.bluetooth_address == sp.address), None)

@@ -98,11 +98,12 @@ class MacAudio:
 
     # -- control ------------------------------------------------------------
     def _is_master(self, name: str, d: Optional[AudioDevice]) -> bool:
+        """Only a Soundscape aggregate fans a volume out to its speakers; in relay mode the
+        master is BlackHole itself (what the Mac's volume keys control), so the full level
+        reaches the speakers whenever it is at 100%."""
         if name.startswith(AGGREGATE_UID_PREFIX):
             return True
-        if d is None:
-            return False
-        return d.is_soundscape_aggregate or ("blackhole" in d.uid.lower() and bool(self.group))
+        return d is not None and d.is_soundscape_aggregate
 
     def _targets(self, name: str) -> List[AudioDevice]:
         d = self.ca.device_by_uid(name)

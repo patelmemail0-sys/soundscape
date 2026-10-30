@@ -72,7 +72,7 @@ svg text{fill:var(--fg);font-size:12px}
       <span class="sub mono" id="masterVal"></span>
     </h2>
     <div class="row" style="margin-bottom:10px">
-      <span class="sub" style="width:70px">Master</span>
+      <span class="sub" style="min-width:70px" id="masterLabel">Master</span>
       <input type="range" min="0" max="100" id="master" style="flex:1" oninput="vol('all',this.value)">
       <button class="sm" onclick="mute('all')">mute</button>
     </div>
@@ -173,7 +173,8 @@ function render(s) {
   document.getElementById('platform').textContent = (s.platform === 'mac' ? 'macOS · ' : 'Linux · ') + (s.server && s.server.name ? s.server.name : 'no sound server');
   document.getElementById('btnUp').textContent = s.up ? 'Rebuild' : 'Bring up';
   document.getElementById('btnDown').disabled = !s.up;
-  if (s.volume != null && document.activeElement.id !== 'master') { document.getElementById('master').value = s.volume; document.getElementById('masterVal').textContent = s.volume + '%' + (s.muted ? ' muted' : ''); }
+  document.getElementById('masterLabel').textContent = s.master_label || 'Master';
+  if (s.volume != null && document.activeElement.id !== 'master') { document.getElementById('master').value = s.volume; document.getElementById('masterVal').textContent = s.volume + '%' + (s.muted ? ' muted' : '') + (s.engine === 'relay' && s.volume < 100 ? ' · raise for full level' : ''); }
   renderSpeakers(s); renderPath(s); renderSettings(s); renderSync(s.last_sync);
   if (s.job && !jobId) { jobId = s.job.id; pollJob(); }
 }

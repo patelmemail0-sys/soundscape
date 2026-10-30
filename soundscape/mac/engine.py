@@ -153,6 +153,10 @@ class RelayEngine(Engine):
                                              delay_node=b.speaker.position, sink_index=b.sink.index))
         self.audio.group = [b.sink.name for b in bound]
         self._route_default(state, cfg)
+        level = self.audio.ca.volume(blackhole.id)
+        if level is not None and level < 0.99:
+            self.log(f"the Mac's volume (BlackHole) is at {int(round(level * 100))}%; it feeds every speaker, "
+                     "so raise it with the volume keys or the Master slider for full level")
         return state
 
     def teardown(self, state: EngineState) -> None:
