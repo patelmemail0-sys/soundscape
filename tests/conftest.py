@@ -302,7 +302,7 @@ class World:
         if a[:3] == ["list", "short", "sources"]:
             return ("1\tbluez_input.AA_BB_CC_DD_EE_01.0\tPipeWire\ts16le 1ch 16000Hz\tSUSPENDED\n"
                     "2\talsa_output.pci-0000_00_1f.3.analog-stereo.monitor\tPipeWire\ts16le 2ch 48000Hz\tIDLE\n"
-                    f"3\t{self.default_source}\tPipeWire\ts16le 2ch 48000Hz\tSUSPENDED\n")
+                    "3\talsa_input.pci-0000_00_1f.3.analog-stereo\tPipeWire\ts16le 2ch 48000Hz\tSUSPENDED\n")
         if a[:3] == ["list", "short", "modules"]:
             return "".join(f"{i}\t{n}\t{args}\n" for i, (n, args) in self.modules.items())
         if a[:3] == ["list", "short", "sink-inputs"]:
@@ -331,6 +331,9 @@ class World:
             if a[1] not in self.sinks:
                 return (1, "", "Failure: No such entity")
             self.default_sink = a[1]
+            return ""
+        if a[0] == "set-default-source":
+            self.default_source = a[1]
             return ""
         if a[0] == "move-sink-input":
             self.sink_inputs[int(a[1])] = self.sinks[a[2]]["index"]

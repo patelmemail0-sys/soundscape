@@ -108,6 +108,12 @@ class MacAudio:
                             "address": d.bluetooth_address})
         return out
 
+    def builtin_microphone(self) -> Optional[str]:
+        for d in self.sources():
+            if d["transport"] == "builtin":
+                return d["name"]
+        return None
+
     def pick_microphone(self, exclude_addresses: Sequence[str] = ()) -> Optional[str]:
         """Best microphone for calibration: built-in first, never a speaker's own mic.
 

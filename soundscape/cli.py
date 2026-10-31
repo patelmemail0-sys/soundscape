@@ -77,6 +77,9 @@ def print_status(status: dict) -> None:
         vol = f"{sp['volume']}%" if sp.get("volume") is not None else "-"
         mode = "  HEADSET MODE (music muted)" if sp.get("mode") == "headset" else ""
         say(f"  {sp['position']:<6} {sp['name']:<28} {sp['address']}  {link:<22} {sink}  vol {vol}  delay +{sp['offset_ms']:.1f} ms{mode}")
+    mic = status.get("microphone") or {}
+    if mic.get("pinned"):
+        say(f"microphone: {'pinned to ' + mic['pinned'] if mic.get('ok') else 'NOT on the pinned mic (' + str(mic.get('current')) + '); run `soundscape up`'}")
     if status.get("default_input_is_speaker"):
         say("warning: the system microphone is one of the speakers; recording from it silences that speaker. "
             "`soundscape up` moves it to the built-in mic.")
@@ -244,6 +247,33 @@ def cmd_play(session: Session, args: argparse.Namespace) -> int:
                 loop=args.loop, shuffle=args.shuffle, volume=args.volume)
 
 
+def cmd_start(session: Session, args: argparse.Namespace) -> int:
+    """One command for everyday use: join the speakers, open the dashboard, keep it all running."""
+    from .remote import serve
+    say("Soundscape starting ...")
+    if len(session.config.speakers) < 2:
+        say("no speakers configured yet: the dashboard will open so you can scan and add them")
+    else:
+        try:
+            session.up()
+        except SoundscapeError as exc:
+            err(f"not up yet: {exc.message}" + (f"\n  hint: {exc.hint}" if exc.hint else ""))
+            say("will keep retrying in the background")
+    try:
+        serve(session, host=args.host, port=args.port, log=say, token=args.token,
+              open_browser=not args.no_open, watchdog_s=args.interval, quit_allowed=True)
+    finally:
+        if args.keep:
+            say("Soundscape stopped; the virtual output stays in place")
+        else:
+            try:
+                session.down()
+            except SoundscapeError as exc:
+                err(f"could not take the output down: {exc.message}")
+            say("Soundscape stopped; your normal audio output is back")
+    return 0
+
+
 def cmd_ui(session: Session, args: argparse.Namespace) -> int:
     from .remote import serve
     serve(session, host=args.host, port=args.port, log=say, token=args.token,
@@ -397,7 +427,9 @@ def _finish_setup(session: Session, args: argparse.Namespace) -> int:
             Calibrator(session, log=say).auto(passes=1)
         except SoundscapeError as exc:
             err(f"calibration skipped: {exc.message}" + (f"\n  hint: {exc.hint}" if exc.hint else ""))
-    say("\nall set. Useful next steps:")
+    say("\nall set. From now on, one command (or the Soundscape app) does everything:")
+    say("  soundscape start            join the speakers, open the dashboard, keep it running")
+    say("\nother useful commands:")
     say("  soundscape add <address>    add another speaker any time")
     say("  soundscape status           what is connected and playing")
     say("  soundscape play song.mp3    play a file through both speakers")
@@ -508,6 +540,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--player", choices=("mpv", "ffplay", "paplay"))
     s.add_argument("--volume", type=int, help="player volume percent (mpv only)")
 
+    s = sub.add_parser("start", help="everyday launcher: join the speakers, open the dashboard, keep everything running")
+    s.add_argument("--host", default="127.0.0.1", help="bind address (0.0.0.0 for LAN access)")
+    s.add_argument("--port", type=int, default=8787)
+    s.add_argument("--token", help="require this token (open the page with ?token=...)")
+    s.add_argument("--no-open", action="store_true", help="do not open a browser")
+    s.add_argument("--interval", type=float, default=10.0, help="seconds between health checks")
+    s.add_argument("--keep", action="store_true", help="leave the output in place on quit")
+
     for name, help_text in (("ui", "open the web dashboard: visualize and control everything"),
                             ("remote", "same dashboard, for your phone (does not open a browser)")):
         s = sub.add_parser(name, help=help_text)
@@ -529,7 +569,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMANDS = {
     "setup": cmd_setup, "doctor": cmd_doctor, "scan": cmd_scan, "add": cmd_add, "remove": cmd_remove,
-    "reconnect": cmd_reconnect,
+    "reconnect": cmd_reconnect, "start": cmd_start,
     "up": cmd_up, "down": cmd_down, "status": cmd_status, "volume": cmd_volume, "mute": cmd_mute,
     "offset": cmd_offset, "sync": cmd_sync, "test": cmd_test, "play": cmd_play, "remote": cmd_ui, "ui": cmd_ui,
     "daemon": cmd_daemon, "config": cmd_config,
@@ -540,7 +580,7 @@ def make_session(args: argparse.Namespace, runner: Optional[Runner] = None) -> S
     from . import platform as plat
     runner = runner or Runner()
     paths = Paths.under(Path(args.root)) if args.root else Paths()
-    log = say if args.verbose or args.command in ("setup", "up", "down", "daemon", "add", "scan") else (lambda _m: None)
+    log = say if args.verbose or args.command in ("setup", "up", "down", "daemon", "add", "scan", "start") else (lambda _m: None)
     bluez = None
     if plat.current() != plat.MAC and args.adapter:
         from .bluez import BlueZ

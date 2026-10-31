@@ -149,6 +149,9 @@ class RelayEngine(Engine):
         argv = [sys.executable, "-m", "soundscape.mac.ioproc", "--socket", self.socket_path,
                 "--input", blackhole.uid, "--name", cfg.description,
                 "--uid", f"{AGGREGATE_UID_PREFIX}{cfg.sink_name}.relay"]
+        if cfg.stereo_split:
+            self.log("note: stereo split is ON: the left speaker plays only the left channel and the right speaker "
+                     "only the right. Turn it off (`soundscape config set stereo_split false`) for full audio everywhere")
         ordered = sorted(bound, key=lambda b: b.sink.headset_mode)  # a music-mode speaker drives the clock
         for b in ordered:
             argv += ["--output", f"{b.speaker.position}:{b.sink.name}:{b.speaker.offset_ms:.3f}"]
@@ -157,6 +160,10 @@ class RelayEngine(Engine):
         buffer = os.environ.get("SOUNDSCAPE_RELAY_BUFFER")
         if buffer and buffer.isdigit():
             argv += ["--buffer", buffer]
+        if cfg.pin_microphone:
+            mic = cfg.microphone if cfg.microphone and cfg.microphone != "builtin" else self.audio.builtin_microphone()
+            if mic:
+                argv += ["--mic", mic]
         log = self.runner.open_log(str(self.paths.engine_log))
         proc = self.runner.popen(argv, stdout=log, stderr=log, start_new_session=True,
                                  env=dict(os.environ, PYTHONUNBUFFERED="1"))

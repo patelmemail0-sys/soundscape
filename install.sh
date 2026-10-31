@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Install Soundscape for the current user (Linux or macOS). Options:
 #   --service   also install the autostart unit (systemd user unit on Linux, LaunchAgent on macOS)
+#   --no-app    skip the one-click launcher (Soundscape.app on macOS, .desktop entry on Linux)
 #   --dev       editable install with test dependencies
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SERVICE=0; DEV=0
+SERVICE=0; DEV=0; APP=1
 for arg in "$@"; do
   case "$arg" in
     --service) SERVICE=1 ;;
+    --no-app) APP=0 ;;
     --dev) DEV=1 ;;
     -h|--help) sed -n '2,5p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
@@ -60,6 +62,54 @@ if ! command -v soundscape >/dev/null 2>&1; then
   echo
 fi
 
+SOUNDSCAPE_BIN="$(command -v soundscape 2>/dev/null || true)"
+[[ -z "$SOUNDSCAPE_BIN" ]] && SOUNDSCAPE_BIN="$(python3 -m site --user-base 2>/dev/null)/bin/soundscape"
+
+if (( APP )) && [[ -x "$SOUNDSCAPE_BIN" ]]; then
+  if [[ "$OS" == "Darwin" ]]; then
+    app="$HOME/Applications/Soundscape.app"
+    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    cat > "$app/Contents/MacOS/Soundscape" <<LAUNCH
+#!/bin/bash
+# Soundscape launcher: if it is already running just open the dashboard, otherwise start it.
+export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
+if curl -s -m 1 http://127.0.0.1:8787/api/status >/dev/null 2>&1; then
+  open "http://127.0.0.1:8787/"
+  exit 0
+fi
+exec "$SOUNDSCAPE_BIN" start >> /tmp/soundscape.log 2>&1
+LAUNCH
+    chmod +x "$app/Contents/MacOS/Soundscape"
+    cat > "$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>Soundscape</string>
+  <key>CFBundleDisplayName</key><string>Soundscape</string>
+  <key>CFBundleIdentifier</key><string>com.soundscape.launcher</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleExecutable</key><string>Soundscape</string>
+  <key>LSUIElement</key><true/>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+</dict></plist>
+PLIST
+    echo "installed $app  (open it from Launchpad or Spotlight: it joins the speakers and opens the dashboard; log: /tmp/soundscape.log)"
+  else
+    mkdir -p "$HOME/.local/share/applications"
+    cat > "$HOME/.local/share/applications/soundscape.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Soundscape
+Comment=Play through all your Bluetooth speakers at once
+Exec=$SOUNDSCAPE_BIN start
+Terminal=false
+Categories=AudioVideo;Audio;
+DESKTOP
+    echo "installed a Soundscape launcher in your applications menu"
+  fi
+fi
+
 if (( SERVICE )); then
   if [[ "$OS" == "Darwin" ]]; then
     mkdir -p "$HOME/Library/LaunchAgents"
@@ -81,4 +131,5 @@ if (( SERVICE )); then
 fi
 
 echo
-echo "done. Next: put both speakers in pairing mode and run:  soundscape setup"
+echo "done. First time: put the speakers in pairing mode and run:  soundscape setup"
+echo "After that, just launch Soundscape (the app) or run:        soundscape start"

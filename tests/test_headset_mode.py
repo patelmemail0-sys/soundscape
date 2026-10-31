@@ -101,7 +101,7 @@ def test_mac_up_moves_default_input_off_a_speaker(runner, tmp_path, monkeypatch)
     assert s.pulse.default_source_address() == MAC_A
     s.up()
     assert hal.default_input == hal.id_for_uid(UID_MIC)
-    assert any("switched it to" in m for m in s.logs)
+    assert any("pinned to" in m for m in s.logs)
     assert s.status()["default_input_is_speaker"] is False
 
 

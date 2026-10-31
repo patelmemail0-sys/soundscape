@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 - 2026-10-31
+
+One-click everyday use.
+
+* `soundscape start`: joins the speakers, pins the microphone, opens the dashboard and keeps
+  a watchdog running (reconnects, rebuilds, re-pins); Quit in the dashboard restores normal
+  output. The installer creates Soundscape.app (macOS) or a launcher entry (Linux).
+* Microphone pinning: the system input stays on the built-in mic (configurable), enforced on
+  `up`, by the daemon, and every 1.5 s inside the relay process; status reports it.
+* Every speaker always gets the full mix; stereo split is an advanced command-line flag only
+  and is announced loudly when on.
+
 ## 0.4.5 - 2026-10-30
 
 Dashboard reliability.

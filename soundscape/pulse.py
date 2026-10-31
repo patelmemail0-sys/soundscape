@@ -442,6 +442,20 @@ class PulseCtl:
                             "address": m.group(1).replace("_", ":").upper() if m else None})
         return out
 
+    def builtin_microphone(self) -> Optional[str]:
+        for d in self.sources():
+            if d["transport"] == "builtin":
+                return d["name"]
+        return None
+
+    def default_source_address(self) -> Optional[str]:
+        name = self.default_source()
+        m = re.search(r"bluez_(?:input|source)\.(([0-9A-Fa-f]{2}_){5}[0-9A-Fa-f]{2})", name or "")
+        return m.group(1).replace("_", ":").upper() if m else None
+
+    def set_default_source(self, name: str) -> None:
+        self._pactl("set-default-source", name)
+
     def pick_microphone(self, exclude_addresses: Iterable[str] = ()) -> Optional[str]:
         """Best microphone for calibration: a wired/built-in input first, never a speaker's own mic."""
         excluded = {a.upper() for a in exclude_addresses}
@@ -451,7 +465,9 @@ class PulseCtl:
         if candidates:
             return candidates[0]["name"]
         default = self.default_source()
-        return default or None
+        if default and not any(default.upper().find(a.replace(":", "_")) >= 0 for a in excluded):
+            return default
+        return None
 
     # -- playback / capture (used by test tones and sync calibration) --------
     def play_file(self, path, sink: Optional[str] = None, wait: bool = True):

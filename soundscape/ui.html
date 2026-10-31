@@ -61,6 +61,7 @@ svg text{fill:var(--fg);font-size:12px}
   <button class="pri" id="btnUp" onclick="job('/api/up',{})">Bring up</button>
   <button id="btnDown" onclick="job('/api/down',{})">Take down</button>
   <button onclick="job('/api/test',{})">Test tones</button>
+  <button id="btnQuit" class="danger" style="display:none" onclick="quitApp()">Quit</button>
 </header>
 <main>
   <section class="panel wide">
@@ -108,7 +109,7 @@ svg text{fill:var(--fg);font-size:12px}
   <section class="panel">
     <h2>Settings <span class="spacer"></span><span class="sub">changes apply on the next Bring up</span></h2>
     <div class="row between"><label>Engine <span class="sub" id="engineHint"></span></label><select id="cfgEngine" onchange="cfg('engine',this.value)"></select></div>
-    <div class="row between" style="margin-top:8px"><label>Stereo split (left = L channel, right = R)</label><input type="checkbox" id="cfgStereo" onchange="cfg('stereo_split',this.checked)"></div>
+    <div class="row between" style="margin-top:8px"><label>Pin the system microphone to the built-in mic <span class="sub" id="micNote"></span></label><input type="checkbox" id="cfgPin" onchange="cfg('pin_microphone',this.checked)"></div>
     <div class="row between" style="margin-top:8px"><label>Automatic latency compensation</label><input type="checkbox" id="cfgComp" onchange="cfg('latency_compensate',this.checked)"></div>
     <div class="row between" style="margin-top:8px"><label>Make it the default output while up</label><input type="checkbox" id="cfgDefault" onchange="cfg('set_default_sink',this.checked)"></div>
   </section>
@@ -127,7 +128,7 @@ svg text{fill:var(--fg);font-size:12px}
 
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
-const PAGE_VERSION = '0.4.5', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.5.0', SERVER_VERSION = '__SERVER_VERSION__';
 let status = null, jobId = null, busyPath = false;
 if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) document.getElementById('stale').style.display = 'block';
 window.addEventListener('error', e => toast('Page error', e.message, false));
@@ -181,6 +182,7 @@ function render(s) {
   document.getElementById('engine').textContent = s.up ? `up via ${s.engine}${s.is_default ? ' · default output' : ''}${s.stereo_split ? ' · stereo split' : ''}` : 'down';
   document.getElementById('platform').textContent = (s.platform === 'mac' ? 'macOS · ' : 'Linux · ') + (s.server && s.server.name ? s.server.name : 'no sound server');
   document.getElementById('btnUp').textContent = s.up ? 'Rebuild' : 'Bring up';
+  document.getElementById('btnQuit').style.display = s.can_quit ? '' : 'none';
   document.getElementById('btnDown').disabled = !s.up;
   document.getElementById('masterLabel').textContent = s.master_label || 'Master';
   if (s.volume != null && document.activeElement.id !== 'master') { document.getElementById('master').value = s.volume; document.getElementById('masterVal').textContent = s.volume + '%' + (s.muted ? ' muted' : '') + (s.engine === 'relay' && s.volume < 100 ? ' · raise for full level' : ''); }
@@ -261,7 +263,10 @@ function renderSettings(s) {
   const engines = s.engines || []; if (sel.options.length !== engines.length) sel.innerHTML = engines.map(e => `<option value="${e}">${e}</option>`).join('');
   if (document.activeElement !== sel) sel.value = c.engine;
   document.getElementById('engineHint').textContent = (s.platform === 'mac' && s.engine === 'aggregate') ? '· aggregate: no sync trims; choose auto or relay and Rebuild' : '';
-  document.getElementById('cfgStereo').checked = !!c.stereo_split;
+  document.getElementById('cfgPin').checked = !!c.pin_microphone;
+  const mic = s.microphone || {};
+  document.getElementById('micNote').textContent = mic.pinned ? (mic.ok ? '· on ' + mic.pinned : '· NOT pinned right now') : '';
+  if (c.stereo_split) document.getElementById('pathNote').textContent = 'stereo split is ON (left/right channels separated); run: soundscape config set stereo_split false';
   document.getElementById('cfgComp').checked = !!c.latency_compensate;
   document.getElementById('cfgDefault').checked = !!c.set_default_sink;
 }
@@ -318,6 +323,11 @@ async function refreshLog() {
   const el = document.getElementById('log');
   el.textContent = lines.map(l => new Date(l.t * 1000).toLocaleTimeString() + '  ' + l.msg).join('\n') || 'no activity yet';
   el.scrollTop = el.scrollHeight;
+}
+async function quitApp() {
+  if (!confirm('Quit Soundscape and restore your normal audio output?')) return;
+  await api('/api/quit', {}).catch(quiet);
+  document.body.innerHTML = '<main><section class="panel"><h2>Soundscape stopped</h2><p>Your normal audio output is back. Launch the Soundscape app or run <b>soundscape start</b> to begin again.</p></section></main>';
 }
 async function resetTrims() { try { await api('/api/offset', {target: 'all', offset_ms: 0}); toast('Trims reset', '', false); document.getElementById('syncNote').textContent = 'trims reset'; } catch (e) {} refresh(); }
 async function loadSources() {

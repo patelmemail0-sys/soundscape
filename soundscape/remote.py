@@ -143,7 +143,21 @@ class RemoteApp:
         self.jobs = Jobs(synchronous=synchronous_jobs)
         self.last_sync: Optional[Dict[str, Any]] = None
         self._job_local = threading.local()
+        self.on_quit: Optional[Callable[[], None]] = None  # set by serve() when quitting is allowed
         session.log = self._log  # capture backend progress for the activity log and job logs
+
+    def watchdog_tick(self) -> None:
+        """Daemon duty for `soundscape start`: reconnect, rebuild, re-pin the microphone."""
+        if self.jobs.active is not None:
+            return
+        if not self._lock.acquire(timeout=0.5):
+            return
+        try:
+            self.session.ensure_up()
+        except SoundscapeError as exc:
+            self._log(f"not ready: {exc.message}")
+        finally:
+            self._lock.release()
 
     # -- logging ---------------------------------------------------------------------
     def _log(self, msg: str) -> None:
@@ -254,6 +268,7 @@ class RemoteApp:
         active = self.jobs.active
         st["job"] = active.to_dict() if active else None
         st["engines"] = ["auto", "aggregate", "relay"] if st.get("platform") == "mac" else ["auto", "pipewire", "pulse"]
+        st["can_quit"] = self.on_quit is not None
         return st
 
     @staticmethod
@@ -264,6 +279,11 @@ class RemoteApp:
     # -- POST --------------------------------------------------------------------------
     def _post(self, route: str, body: Dict[str, Any]) -> Any:
         s = self.session
+        if route == "/api/quit":
+            if self.on_quit is None:
+                raise RemoteApp.Busy("this server was not started with `soundscape start`; press Ctrl-C in its terminal")
+            threading.Timer(0.3, self.on_quit).start()
+            return {"ok": True, "message": "shutting down"}
         if route == "/api/up":
             return self._run_job("Bringing speakers up", lambda: s.up().engine)
         if route == "/api/down":
@@ -408,9 +428,18 @@ def make_handler(app: RemoteApp):
 
 
 def serve(session: Session, host: str = "127.0.0.1", port: int = 8787, log: Log = print,
-          token: Optional[str] = None, open_browser: bool = False) -> None:
+          token: Optional[str] = None, open_browser: bool = False, watchdog_s: Optional[float] = None,
+          quit_allowed: bool = False) -> None:
     app = RemoteApp(session, log, token=token)
     httpd = ThreadingHTTPServer((host, port), make_handler(app))
+    if quit_allowed:
+        app.on_quit = lambda: threading.Thread(target=httpd.shutdown, daemon=True).start()
+    stop = threading.Event()
+    if watchdog_s:
+        def watchdog() -> None:
+            while not stop.wait(watchdog_s):
+                app.watchdog_tick()
+        threading.Thread(target=watchdog, daemon=True).start()
     suffix = f"?token={token}" if token else ""
     shown_host = "127.0.0.1" if host in ("0.0.0.0", "") else host
     url = f"http://{shown_host}:{httpd.server_address[1]}/{suffix}"
@@ -427,4 +456,5 @@ def serve(session: Session, host: str = "127.0.0.1", port: int = 8787, log: Log 
     except KeyboardInterrupt:
         pass
     finally:
+        stop.set()
         httpd.server_close()

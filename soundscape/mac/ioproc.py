@@ -59,6 +59,7 @@ class Mixer:
     history: bytearray = field(default_factory=bytearray)
     frames_seen: int = 0
     cycles: int = 0
+    mic_resets: int = 0
 
     def __post_init__(self) -> None:
         self.frame_bytes = self.in_channels * FLOAT
@@ -167,7 +168,7 @@ class Mixer:
 
     def status(self) -> Dict[str, object]:
         return {"rate": self.rate, "stereo_split": self.stereo_split, "frames_seen": self.frames_seen,
-                "cycles": self.cycles,
+                "cycles": self.cycles, "mic_resets": self.mic_resets,
                 "buffer_map": [o.position if o else None for o in self.buffer_map] if self.buffer_map is not None else None,
                 "outputs": [{"uid": o.uid, "position": o.position, "delay_ms": o.delay_ms,
                              "delay_frames": o.delay_frames, "channels": o.channels,
@@ -317,7 +318,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--uid", default=f"{AGGREGATE_UID_PREFIX}{SINK_NAME}.relay")
     p.add_argument("--stereo", action="store_true")
     p.add_argument("--buffer", type=int, default=1024, help="buffer size in frames")
+    p.add_argument("--mic", help="UID of the microphone to keep as the system default input")
     return p
+
+
+def guard_microphone(ca: CoreAudio, mic_id: int) -> bool:
+    """Put the default input back on ``mic_id`` if macOS moved it. Returns True when it did."""
+    try:
+        if ca.default_input() == mic_id:
+            return False
+        ca.set_default_input(mic_id)
+        return True
+    except Exception:
+        return False
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -358,12 +371,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         host = IOProcHost(ca.hal)
         host.start(agg_id, mixer.process)
         server = ControlServer(args.socket, mixer, on_quit=lambda: None)
-        print(f"READY rate={rate} in_channels={in_channels} outputs={len(outputs)}", flush=True)
+        mic_dev = ca.device_by_uid(args.mic) if args.mic else None
+        print(f"READY rate={rate} in_channels={in_channels} outputs={len(outputs)} mic={'pinned' if mic_dev else 'free'}", flush=True)
         thread = threading.Thread(target=server.serve, daemon=True)
         thread.start()
+        guard_ticks = 0
         try:
             while server.running:
                 time.sleep(0.25)
+                guard_ticks += 1
+                if mic_dev is not None and guard_ticks % 6 == 0 and guard_microphone(ca, mic_dev.id):
+                    mixer.mic_resets += 1
+                    print("microphone moved by the system; pinned it back", flush=True)
         except KeyboardInterrupt:
             pass
         finally:

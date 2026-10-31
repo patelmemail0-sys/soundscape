@@ -82,7 +82,9 @@ class Speaker:
 class Config:
     speakers: List[Speaker] = field(default_factory=list)
     engine: str = "auto"  # auto | pipewire | pulse (Linux) | aggregate | relay (macOS)
-    stereo_split: bool = False  # left speaker gets L channel only, right gets R only (PipeWire engine)
+    stereo_split: bool = False  # advanced: left speaker gets L channel only, right gets R only. Off = every speaker plays the full mix
+    pin_microphone: bool = True  # keep the system microphone on the built-in mic so no speaker drops into headset mode
+    microphone: str = "builtin"  # "builtin" or an input device name/UID
     latency_compensate: bool = True  # let the engine align speakers from their reported latency
     set_default_sink: bool = True  # route all desktop audio through Soundscape while it is up
     resample_quality: int = 10  # PipeWire 0..14; higher = cleaner drift correction
@@ -175,7 +177,8 @@ class Config:
 
     # -- settings ----------------------------------------------------------
     SETTABLE = ("engine", "stereo_split", "latency_compensate", "set_default_sink", "resample_quality",
-                "pulse_resample_method", "description", "connect_timeout_s", "sink_timeout_s")
+                "pulse_resample_method", "description", "connect_timeout_s", "sink_timeout_s",
+                "pin_microphone", "microphone")
 
     def set_option(self, key: str, raw: object) -> object:
         """Set a scalar option from user input with type coercion; returns the stored value."""

@@ -169,29 +169,56 @@ class Session:
 
     HEADSET_RECOVERY_S = 6.0
 
+    def pinned_microphone(self) -> Optional[str]:
+        """The input device the system microphone should stay on (None = pinning off/unavailable)."""
+        if not self.config.pin_microphone:
+            return None
+        if self.config.microphone and self.config.microphone != "builtin":
+            return self.config.microphone
+        builtin = getattr(self.pulse, "builtin_microphone", None)
+        mic = builtin() if builtin else None
+        if mic is None:
+            picker = getattr(self.pulse, "pick_microphone", None)
+            mic = picker([sp.address for sp in self.config.speakers]) if picker else None
+        return mic
+
+    def pin_microphone(self, quiet: bool = False) -> bool:
+        """Force the system default input onto the pinned microphone. Returns True if it changed it.
+
+        macOS moves the default input to a Bluetooth device whenever one connects; anything then
+        recording (browser, Siri, a call) flips that speaker into headset mode."""
+        mic = self.pinned_microphone()
+        if not mic or not hasattr(self.pulse, "set_default_source"):
+            return False
+        try:
+            current = self.pulse.default_source()
+        except SoundscapeError:
+            return False
+        if current == mic:
+            return False
+        try:
+            self.pulse.set_default_source(mic)
+        except SoundscapeError as exc:
+            if not quiet:
+                self.log(f"could not pin the microphone: {exc.message}")
+            return False
+        if not quiet:
+            self.log(f"system microphone pinned to {mic} (was {current or 'unset'}) so no speaker drops into headset mode")
+        return True
+
     def _protect_a2dp(self, bound: List[Bound]) -> List[Bound]:
-        """If the system's default microphone is one of the speakers, any recording flips that
-        speaker into headset mode and silences its music. Point the default input elsewhere,
-        then give speakers that are in headset mode a few seconds to come back to music mode."""
+        """Pin the microphone away from the speakers, then give speakers that are in headset mode
+        a few seconds to come back to music mode (and reconnect them if they do not)."""
         macs = {b.speaker.address for b in bound}
-        get_addr = getattr(self.pulse, "default_source_address", None)
-        if get_addr is not None:
+        if not self.pin_microphone():
+            get_addr = getattr(self.pulse, "default_source_address", None)
             try:
-                addr = get_addr()
+                addr = get_addr() if get_addr else None
             except SoundscapeError:
                 addr = None
             if addr and addr.upper() in macs:
-                mic = self.pulse.pick_microphone(list(macs))
-                if mic:
-                    try:
-                        self.pulse.set_default_source(mic)
-                        self.log(f"the Mac's default microphone was a speaker's own mic; switched it to {mic} so the "
-                                 "speaker stays in music (A2DP) mode")
-                    except SoundscapeError as exc:
-                        self.log(f"could not change the default microphone: {exc.message}")
-                else:
-                    self.log("warning: the Mac's default microphone is one of the speakers; recording from it will "
-                             "silence that speaker. Pick the built-in mic in System Settings > Sound > Input")
+                self.log("warning: the system microphone is one of the speakers; recording from it will silence that "
+                         "speaker. Pick the built-in mic in System Settings > Sound > Input")
         if not any(b.sink.headset_mode for b in bound):
             return bound
         deadline = time.monotonic() + self.HEADSET_RECOVERY_S
@@ -288,6 +315,7 @@ class Session:
         """Used by the daemon: reconnect and rebuild only when something is actually wrong."""
         state = self.state()
         if state:
+            self.pin_microphone()
             problems = self.engine(state).missing(state)
             if not problems:
                 return state
@@ -437,6 +465,13 @@ class Session:
                 out["default_input_is_speaker"] = bool(addr and addr.upper() in {sp.address for sp in self.config.speakers})
             except SoundscapeError:
                 pass
+        try:
+            pinned = self.pinned_microphone()
+            current = self.pulse.default_source()
+            out["microphone"] = {"pinned": pinned, "current": current,
+                                 "ok": bool(pinned) and current == pinned if pinned else None}
+        except SoundscapeError:
+            out["microphone"] = None
         if state and hasattr(self.engine(state), "describe"):
             try:
                 out["engine_detail"] = self.engine(state).describe(state)  # type: ignore[attr-defined]

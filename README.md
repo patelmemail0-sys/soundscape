@@ -126,10 +126,19 @@ connects them, builds the joint output, plays a low tone on the left and a highe
 the right so you can confirm which is which, and offers to align them with your microphone.
 After that, everything on the machine plays through both speakers.
 
-Day to day:
+Day to day, one command does everything: connects the speakers, joins them, pins the
+microphone, opens the dashboard and keeps watching so dropped speakers come back:
 
 ```bash
-soundscape up                 # connect both and make them the default output
+soundscape start
+```
+
+On a Mac the installer also puts **Soundscape.app** in your Applications folder, so you can
+launch all of that from Launchpad or Spotlight; the dashboard's Quit button shuts it down and
+restores your normal output. Other commands when you want them:
+
+```bash
+soundscape up                 # join the speakers without the dashboard
 soundscape play ~/Music/*.mp3 # or just press play in any app
 soundscape status
 soundscape down               # back to your normal output
@@ -256,6 +265,19 @@ itself: a speaker that comes back on its own without its delay filter, or a sink
 re-created with a new id, triggers a rebuild within one interval. On macOS check `/tmp/soundscape-daemon.log`;
 on Linux `systemctl --user status soundscape`.
 
+## Two rules Soundscape enforces
+
+* **Every speaker plays the full mix.** No left/right splitting unless you deliberately turn
+  on the advanced stereo-split option from the command line (`soundscape up --stereo`); the
+  dashboard does not expose it.
+* **The system microphone stays on the built-in mic.** macOS moves the default input to a
+  Bluetooth speaker whenever one connects, and anything that then records (a browser tab,
+  Siri, a call) flips that speaker into headset mode: mono, 16 kHz, no bass, out of sync.
+  Soundscape pins the input to the built-in microphone on `up`, re-pins it every few seconds
+  while running, and reconnects any speaker caught in headset mode. Turn this off with
+  `soundscape config set pin_microphone false` or point it at another mic with
+  `soundscape config set microphone <device>`.
+
 ## Volume: no limits from Soundscape
 
 The chain runs at unity gain. On `up`, every speaker is set to its own 100% (over Bluetooth
@@ -286,7 +308,8 @@ soundscape doctor               check Bluetooth, sound server, tools; print fixe
 soundscape scan [--seconds N]   discover speakers in pairing mode
 soundscape add ADDR [--position left|right|NAME] [--name N]   any number of speakers
 soundscape remove POSITION|ADDR|NAME [--forget]
-soundscape up [--engine pipewire|pulse] [--stereo] [--no-default] [--no-compensate]
+soundscape start [--host H] [--port P] [--token T] [--keep]   everyday launcher
+soundscape up [--engine pipewire|pulse|aggregate|relay] [--no-default] [--no-compensate] [--stereo (advanced)]
 soundscape down
 soundscape status [--json]
 soundscape volume 40            both speakers
@@ -348,7 +371,7 @@ PipeWire config is validated against PipeWire's own parser in CI when available.
 
 ## Status
 
-0.4.0. Linux and macOS backends, any number of speakers, unit-tested against emulated BlueZ, PipeWire, PulseAudio
+0.5.0. Linux and macOS backends, any number of speakers, unit-tested against emulated BlueZ, PipeWire, PulseAudio
 and CoreAudio; the Linux engine is additionally validated against a live PipeWire 1.0.5 in
 CI. Neither backend has been run against physical speakers by the author yet. The first
 thing to do with real hardware is `soundscape doctor`, then `soundscape setup`, and file an
