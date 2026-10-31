@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Soundscape</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201024%201024%22%3E%3Crect%20x%3D%22100%22%20y%3D%22100%22%20width%3D%22824%22%20height%3D%22824%22%20rx%3D%22186%22%20fill%3D%22%2316263a%22%2F%3E%3Crect%20x%3D%22190%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Crect%20x%3D%22648%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%234fd1a5%22%20stroke-width%3D%2234%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M414%20452c52%2042%2052%20118%200%20160%22%2F%3E%3Cpath%20d%3D%22M610%20452c-52%2042-52%20118%200%20160%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22512%22%20cy%3D%22532%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3C%2Fsvg%3E">
 <style>
 :root{--bg:#0e1116;--panel:#161b23;--line:#262d39;--fg:#e9edf3;--mut:#8a94a6;--acc:#4fd1a5;--acc2:#6aa5ff;--warn:#f0b35a;--bad:#ef6b6b;--ok:#4fd1a5}
 @media (prefers-color-scheme: light){:root{--bg:#f4f6f9;--panel:#fff;--line:#dfe4ec;--fg:#141922;--mut:#5f6978;--acc:#0e9f73;--acc2:#2f6fe4;--warn:#b7791f;--bad:#c93c3c;--ok:#0e9f73}}
@@ -54,7 +55,7 @@ svg text{fill:var(--fg);font-size:12px}
 <body>
 <div id="stale" style="display:none;background:var(--warn);color:#1a1200;padding:8px 20px;font-size:14px">Soundscape was updated on disk but this server is still the old version. Press Ctrl-C in the terminal and run <b>soundscape ui</b> again.</div>
 <header>
-  <h1><span class="dot" id="dot"></span>Soundscape <span class="pill" id="ver"></span></h1>
+  <h1><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201024%201024%22%3E%3Crect%20x%3D%22100%22%20y%3D%22100%22%20width%3D%22824%22%20height%3D%22824%22%20rx%3D%22186%22%20fill%3D%22%2316263a%22%2F%3E%3Crect%20x%3D%22190%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Crect%20x%3D%22648%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%234fd1a5%22%20stroke-width%3D%2234%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M414%20452c52%2042%2052%20118%200%20160%22%2F%3E%3Cpath%20d%3D%22M610%20452c-52%2042-52%20118%200%20160%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22512%22%20cy%3D%22532%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3C%2Fsvg%3E" alt="" width="28" height="28" style="border-radius:7px"><span class="dot" id="dot"></span>Soundscape <span class="pill" id="ver"></span></h1>
   <span class="pill" id="engine">connecting...</span>
   <span class="pill" id="platform"></span>
   <span class="spacer"></span>
@@ -128,7 +129,7 @@ svg text{fill:var(--fg);font-size:12px}
 
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
-const PAGE_VERSION = '0.5.1', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.5.2', SERVER_VERSION = '__SERVER_VERSION__';
 let status = null, jobId = null, busyPath = false;
 if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) document.getElementById('stale').style.display = 'block';
 window.addEventListener('error', e => toast('Page error', e.message, false));

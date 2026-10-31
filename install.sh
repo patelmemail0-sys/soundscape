@@ -80,6 +80,7 @@ fi
 exit 0
 LAUNCH
     chmod +x "$app/Contents/MacOS/Soundscape"
+    cp assets/Soundscape.icns "$app/Contents/Resources/Soundscape.icns"
     cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -90,20 +91,25 @@ LAUNCH
   <key>CFBundleVersion</key><string>1</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>Soundscape</string>
+  <key>CFBundleIconFile</key><string>Soundscape</string>
   <key>LSUIElement</key><true/>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
 </dict></plist>
 PLIST
     mkdir -p "$HOME/Library/Logs"
+    touch "$app"  # nudge Finder/LaunchServices to pick up the new icon
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" >/dev/null 2>&1 || true
     echo "installed $app  (open it from Launchpad or Spotlight: it starts Soundscape in the background and opens the dashboard; log: ~/Library/Logs/Soundscape.log)"
   else
-    mkdir -p "$HOME/.local/share/applications"
+    mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/512x512/apps"
+    cp assets/soundscape-512.png "$HOME/.local/share/icons/hicolor/512x512/apps/soundscape.png"
     cat > "$HOME/.local/share/applications/soundscape.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Soundscape
 Comment=Play through all your Bluetooth speakers at once
 Exec=$SOUNDSCAPE_BIN start --detach
+Icon=soundscape
 Terminal=false
 Categories=AudioVideo;Audio;
 DESKTOP

@@ -151,6 +151,8 @@ def test_quit_endpoint_and_watchdog(session, world):
 def test_install_script_mentions_app_and_start():
     text = Path("install.sh").read_text()
     assert "Soundscape.app" in text and "soundscape start" in text and "LSUIElement" in text
+    assert "CFBundleIconFile" in text and "Soundscape.icns" in text and "Icon=soundscape" in text
+    assert Path("assets/Soundscape.icns").stat().st_size > 100_000 and Path("assets/soundscape.svg").exists()
     assert struct  # noqa: keeps the import list honest
 
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 - 2026-10-31
+
+* App icon: two speakers with their sound waves meeting in the middle. Shipped as
+  `assets/Soundscape.icns` for the macOS app, a PNG for the Linux launcher, and used as the
+  dashboard's favicon and header mark.
+
 ## 0.5.1 - 2026-10-31
 
 * The Soundscape app no longer hangs as "not responding": it runs `soundscape start --detach`,

@@ -1,4 +1,4 @@
-# Soundscape
+# <img src="assets/soundscape-512.png" width="48" align="top"> Soundscape
 
 **One audio source, all your Bluetooth speakers, in sync.**
 
