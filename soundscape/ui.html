@@ -218,6 +218,13 @@ section{min-width:0}
 .setting .small{display:block;margin-top:1px}
 .setting select{flex:none;max-width:46%}
 
+/* phone remote */
+.remote{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;padding-top:12px}
+.qr{flex:none;border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden;background:#fff}
+.qr svg{display:block}
+.remote-text{flex:1 1 220px;min-width:0;display:grid;gap:6px;font-size:var(--t0)}
+.addr{font-size:1rem;font-weight:600;word-break:break-all;user-select:all;-webkit-user-select:all}
+
 /* doctor */
 .checks{display:grid}
 .check{display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:var(--t0)}
@@ -315,11 +322,11 @@ section{min-width:0}
         <div class="card skel" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <div class="card skel" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       </div>
-      <div class="row" id="mediaRow" style="margin-top:14px" hidden>
+      <div class="row" id="mediaRow" style="margin-top:14px">
         <button data-media="previous" aria-label="Previous track"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
         <button data-media="play-pause" aria-label="Play or pause"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4l9 8-9 8zM15 5h2.5v14H15zm4.5 0H22v14h-2.5z"/></svg></button>
         <button data-media="next" aria-label="Next track"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
-        <span class="small">media keys through playerctl</span>
+        <span class="small" id="mediaNote">media keys through playerctl</span>
       </div>
     </section>
 
@@ -357,6 +364,20 @@ section{min-width:0}
       <div class="setting"><div class="txt"><label for="cfgComp">Automatic latency compensation</label><span class="small">lets the engine correct drift between speakers</span></div><input type="checkbox" class="switch" role="switch" id="cfgComp"></div>
       <div class="setting"><div class="txt"><label for="cfgDefault">Make Soundscape the default output while up</label><span class="small">every app plays through all speakers</span></div><input type="checkbox" class="switch" role="switch" id="cfgDefault"></div>
     </section>
+
+    <section aria-labelledby="hRemote">
+      <div class="sec-head"><h2 id="hRemote">Phone remote</h2><span class="meta" id="remoteNote"></span></div>
+      <div class="setting"><div class="txt"><label for="cfgRemote">Let phones on this Wi-Fi open this dashboard</label><span class="small" id="remoteHint">a token in the address keeps everyone else out; takes effect the next time Soundscape starts</span></div><input type="checkbox" class="switch" role="switch" id="cfgRemote"></div>
+      <div class="remote" id="remoteBox" hidden>
+        <div class="qr" id="qr"></div>
+        <div class="remote-text">
+          <p>Point the phone's camera at the code, or type the address in its browser:</p>
+          <p class="addr" id="remoteUrl"></p>
+          <p class="small" id="remoteAlt"></p>
+          <p class="small">The phone must be on the same Wi-Fi as this Mac. The first time, macOS may ask whether Python can accept incoming connections: click Allow.</p>
+        </div>
+      </div>
+    </section>
   </div>
 
   <section class="wide" aria-labelledby="hLog">
@@ -374,7 +395,7 @@ section{min-width:0}
 
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
-const PAGE_VERSION = '0.6.1', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.7.0', SERVER_VERSION = '__SERVER_VERSION__';
 const $ = id => document.getElementById(id);
 let status = null, jobId = null, pathWasUp = null;
 if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) $('stale').hidden = false;
@@ -386,6 +407,75 @@ const ICON = {
   warn: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 2.5 20h19L12 3.5z"/><path d="M12 10v4.5"/><path d="M12 17.2v.3"/></svg>',
   fail: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/></svg>',
 };
+// Minimal QR encoder: byte mode, error correction M, versions 1-10 (up to 213 bytes). No dependencies.
+const QR = (() => {
+  const TOTAL = [0, 26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
+  const ECC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26];
+  const BLOCKS = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
+  const gfMul = (a, b) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((b >>> i) & 1) * a; } return z & 0xff; };
+  const rsDivisor = deg => { const r = Array(deg).fill(0); r[deg - 1] = 1; let root = 1; for (let i = 0; i < deg; i++) { for (let j = 0; j < deg; j++) r[j] = gfMul(r[j], root) ^ (j + 1 < deg ? r[j + 1] : 0); root = gfMul(root, 2); } return r; };
+  const rsRemainder = (data, div) => { const r = Array(div.length).fill(0); for (const b of data) { const f = b ^ r.shift(); r.push(0); for (let i = 0; i < div.length; i++) r[i] ^= gfMul(div[i], f); } return r; };
+  function encode(text) {
+    const bytes = Array.from(new TextEncoder().encode(text));
+    let ver = 1;
+    for (; ver <= 10; ver++) { const cap = TOTAL[ver] - ECC[ver] * BLOCKS[ver]; if (4 + (ver < 10 ? 8 : 16) + bytes.length * 8 <= cap * 8) break; }
+    if (ver > 10) throw new Error('text too long for a QR code');
+    const capBytes = TOTAL[ver] - ECC[ver] * BLOCKS[ver], bb = [];
+    const push = (v, n) => { for (let i = n - 1; i >= 0; i--) bb.push((v >>> i) & 1); };
+    push(4, 4); push(bytes.length, ver < 10 ? 8 : 16); for (const b of bytes) push(b, 8);
+    push(0, Math.min(4, capBytes * 8 - bb.length)); while (bb.length % 8) bb.push(0);
+    for (let p = 0xec; bb.length < capBytes * 8; p ^= 0xec ^ 0x11) push(p, 8);
+    const data = []; for (let i = 0; i < bb.length; i += 8) data.push(parseInt(bb.slice(i, i + 8).join(''), 2));
+    const nb = BLOCKS[ver], el = ECC[ver], raw = TOTAL[ver], nShort = nb - raw % nb, shortLen = Math.floor(raw / nb), div = rsDivisor(el), blocks = [];
+    for (let i = 0, k = 0; i < nb; i++) { const len = shortLen - el + (i < nShort ? 0 : 1); const dat = data.slice(k, k + len); k += len; const ecc = rsRemainder(dat, div); if (i < nShort) dat.push(0); blocks.push(dat.concat(ecc)); }
+    const out = []; for (let i = 0; i < blocks[0].length; i++) for (let j = 0; j < nb; j++) if (i !== shortLen - el || j >= nShort) out.push(blocks[j][i]);
+    return {ver, codewords: out};
+  }
+  function matrix(text, forceMask) {
+    const {ver, codewords} = encode(text), size = ver * 4 + 17;
+    const mod = Array.from({length: size}, () => Array(size).fill(false)), fn = Array.from({length: size}, () => Array(size).fill(false));
+    const set = (x, y, v) => { mod[y][x] = v; fn[y][x] = true; };
+    for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    const finder = (cx, cy) => { for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const d = Math.max(Math.abs(dx), Math.abs(dy)), x = cx + dx, y = cy + dy; if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4); } };
+    finder(3, 3); finder(size - 4, 3); finder(3, size - 4);
+    const align = [];
+    if (ver > 1) { const n = Math.floor(ver / 7) + 2, step = Math.floor((ver * 8 + n * 3 + 5) / (n * 4 - 4)) * 2; align.push(6); for (let pos = size - 7; align.length < n; pos -= step) align.splice(1, 0, pos); }
+    for (let i = 0; i < align.length; i++) for (let j = 0; j < align.length; j++) {
+      if ((i === 0 && j === 0) || (i === 0 && j === align.length - 1) || (i === align.length - 1 && j === 0)) continue;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(align[i] + dx, align[j] + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+    }
+    const drawFormat = mask => {
+      let rem = mask; for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+      const bits = ((mask << 10) | rem) ^ 0x5412, bit = i => ((bits >>> i) & 1) === 1;
+      for (let i = 0; i <= 5; i++) set(8, i, bit(i)); set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8)); for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+      for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i)); set(8, size - 8, true);
+    };
+    drawFormat(0);
+    if (ver >= 7) { let rem = ver; for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25); const bits = (ver << 12) | rem; for (let i = 0; i < 18; i++) { const b = ((bits >>> i) & 1) === 1, a = size - 11 + i % 3, c = Math.floor(i / 3); set(a, c, b); set(c, a, b); } }
+    let i = 0;
+    for (let right = size - 1; right >= 1; right -= 2) { if (right === 6) right = 5; for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) { const x = right - j, upward = ((right + 1) & 2) === 0, y = upward ? size - 1 - vert : vert; if (!fn[y][x] && i < codewords.length * 8) { mod[y][x] = ((codewords[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; } } }
+    const MASKS = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x, y) => x % 3 === 0, (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => (x * y) % 2 + (x * y) % 3 === 0, (x, y) => ((x * y) % 2 + (x * y) % 3) % 2 === 0, (x, y) => ((x + y) % 2 + (x * y) % 3) % 2 === 0];
+    const apply = m => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!fn[y][x] && MASKS[m](x, y)) mod[y][x] = !mod[y][x]; };
+    const penalty = () => {
+      let p = 0;
+      const line = get => { let run = 1; for (let k = 1; k < size; k++) { if (get(k) === get(k - 1)) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1; } for (let k = 0; k + 11 <= size; k++) { const s = Array.from({length: 11}, (_, t) => get(k + t) ? 1 : 0).join(''); if (s === '10111010000' || s === '00001011101') p += 40; } };
+      for (let y = 0; y < size; y++) line(x => mod[y][x]); for (let x = 0; x < size; x++) line(y => mod[y][x]);
+      for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) { const c = mod[y][x]; if (c === mod[y][x + 1] && c === mod[y + 1][x] && c === mod[y + 1][x + 1]) p += 3; }
+      let dark = 0; for (const row of mod) for (const c of row) if (c) dark++; p += (Math.ceil(Math.abs(dark * 20 - size * size * 10) / (size * size)) - 1) * 10;
+      return p;
+    };
+    let best = forceMask;
+    if (best == null) { let bestScore = Infinity; for (let m = 0; m < 8; m++) { apply(m); drawFormat(m); const sc = penalty(); if (sc < bestScore) { bestScore = sc; best = m; } apply(m); } }
+    apply(best); drawFormat(best);
+    return {size, modules: mod, version: ver, mask: best};
+  }
+  function svg(text, px, label) {
+    const {size, modules} = matrix(text); let d = '';
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (modules[y][x]) d += `M${x} ${y}h1v1h-1z`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 ${size + 4} ${size + 4}" width="${px}" height="${px}" shape-rendering="crispEdges" role="img" aria-label="${label || 'QR code'}"><rect x="-2" y="-2" width="${size + 4}" height="${size + 4}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  }
+  return {encode, matrix, svg};
+})();
 const SERIES = 6;
 const seriesVar = i => `var(--s${(i % SERIES) + 1})`;
 const SPEED_OF_SOUND = 343;  // m/s
@@ -449,7 +539,7 @@ function render(s) {
   $('btnUp').title = s.speakers.length < 2 ? 'Add two or more speakers first' : '';
   $('btnQuit').hidden = !s.can_quit;
   $('btnDown').disabled = !s.up;
-  $('mediaRow').hidden = s.platform === 'mac';
+  $('mediaNote').textContent = s.platform === 'mac' ? 'play, pause and skip in Music or Spotify on the Mac' : 'media keys through playerctl';
   $('masterLabel').textContent = s.master_label || 'Master';
   if (s.volume != null && document.activeElement !== $('master')) {
     $('master').value = s.volume;
@@ -457,7 +547,7 @@ function render(s) {
   }
   $('btnMuteAll').textContent = s.muted ? 'Unmute' : 'Mute';
   $('btnMuteAll').setAttribute('aria-pressed', s.muted ? 'true' : 'false');
-  renderSummary(s); renderSpeakers(s); renderPath(s); renderSettings(s); renderSync(s.last_sync);
+  renderSummary(s); renderSpeakers(s); renderPath(s); renderSettings(s); renderSync(s.last_sync); renderRemote(s);
   if (s.job && !jobId) { jobId = s.job.id; setBusy(true); pollJob(); }
 }
 function setFact(id, text, cls) { const el = $(id); el.textContent = text; el.className = 'v' + (cls ? ' ' + cls : ''); }
@@ -564,6 +654,20 @@ function renderSettings(s) {
   $('micNote').textContent = mic.pinned ? (mic.ok ? 'pinned to ' + mic.pinned : 'not pinned right now') : 'stops speakers from dropping into headset mode';
   $('cfgComp').checked = !!c.latency_compensate;
   $('cfgDefault').checked = !!c.set_default_sink;
+}
+function renderRemote(s) {
+  const r = s.remote || {}, want = !!(s.config && s.config.remote);
+  if (document.activeElement !== $('cfgRemote')) $('cfgRemote').checked = want;
+  const box = $('remoteBox'), live = !!(r.lan && r.urls && r.urls.length);
+  box.hidden = !live;
+  $('remoteNote').textContent = live ? (r.token_set ? 'listening on this Wi-Fi' : 'listening on this Wi-Fi, no token') : (want ? 'quit and open Soundscape again to turn on' : 'off');
+  $('remoteHint').textContent = live && !r.token_set ? 'warning: without a token anyone on the network can change volumes; start with --token or turn the switch on and restart'
+    : 'a token in the address keeps everyone else out; takes effect the next time Soundscape starts';
+  if (!live) return;
+  const ipUrl = r.qr || r.urls[0], others = r.urls.filter(u => u !== ipUrl);
+  $('remoteUrl').textContent = ipUrl;
+  $('remoteAlt').textContent = others.length ? 'also: ' + others.join('  ') : '';
+  const q = $('qr'); if (q.dataset.text !== ipUrl) { try { q.innerHTML = QR.svg(ipUrl, 168, 'QR code for ' + ipUrl); q.dataset.text = ipUrl; } catch (e) { q.textContent = ''; } }
 }
 function renderSync(m) {
   const box = $('syncBars');
@@ -676,6 +780,7 @@ $('cfgEngine').addEventListener('change', ev => cfg('engine', ev.target.value));
 $('cfgPin').addEventListener('change', ev => cfg('pin_microphone', ev.target.checked));
 $('cfgComp').addEventListener('change', ev => cfg('latency_compensate', ev.target.checked));
 $('cfgDefault').addEventListener('change', ev => cfg('set_default_sink', ev.target.checked));
+$('cfgRemote').addEventListener('change', ev => cfg('remote', ev.target.checked));
 $('mediaRow').addEventListener('click', ev => { const b = ev.target.closest('button[data-media]'); if (b) media(b.dataset.media); });
 refresh(); refreshLog(); loadSources();
 setInterval(refresh, 2500); setInterval(refreshLog, 5000);

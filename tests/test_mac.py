@@ -624,3 +624,24 @@ def test_cli_doctor_on_mac(runner, tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "blueutil missing" in out and "BlackHole not installed" in out and "2 Bluetooth audio output" in out
     assert Device  # imported symbol used by type checkers
+
+
+def test_media_keys_drive_music_or_spotify_on_mac(runner, tmp_path, monkeypatch):
+    from soundscape.remote import RemoteApp
+    s, _world, _live = mac_session(runner, make_hal(), tmp_path, monkeypatch)
+    app = RemoteApp(s, log=lambda _m: None, synchronous_jobs=True)
+    status, body, _ = app.handle("POST", "/api/media", {"action": "next"})
+    assert status == 200 and body["ok"] is False and "osascript" in body["message"]
+    runner.tools.add("osascript")
+    runner.on(("osascript", "-e", 'tell application "System Events" to (name of processes) contains "Spotify"'), "false")
+    runner.on(("osascript", "-e", 'tell application "System Events" to (name of processes) contains "Music"'), "false")
+    body = app.handle("POST", "/api/media", {"action": "next"})[1]
+    assert body["ok"] is False and "not running" in body["message"]
+    runner.on(("osascript", "-e", 'tell application "System Events" to (name of processes) contains "Music"'), "true")
+    runner.on(("osascript", "-e", 'tell application "Music" to next track'), "")
+    body = app.handle("POST", "/api/media", {"action": "next"})[1]
+    assert body["ok"] and body["player"] == "Music"
+    assert ["osascript", "-e", 'tell application "Music" to next track'] in runner.calls
+    runner.on(("osascript", "-e", 'tell application "Music" to playpause'), "")
+    body = app.handle("POST", "/api/media", {"action": "play-pause"})[1]
+    assert ["osascript", "-e", 'tell application "Music" to playpause'] in runner.calls and body["ok"]

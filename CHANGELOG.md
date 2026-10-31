@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 - 2026-10-31
+
+* Phone remote. A switch in the dashboard (`remote` setting) makes Soundscape listen on the
+  local network with a generated token; the dashboard then shows the address and a QR code
+  to scan with the phone, so the whole dashboard works from a phone browser. The QR encoder
+  is dependency-free and verified against a reference implementation. `start`, `ui` and the
+  app follow the setting; `--host/--port/--token` still override it; `ui_port` is settable.
+* Transport buttons on macOS drive Music or Spotify (whichever is running) through
+  AppleScript; on Linux they still use playerctl. The row is shown on both platforms.
+
 ## 0.6.1 - 2026-10-31
 
 * Distance compensation for calibration. The microphone hears a far speaker late even when it

@@ -134,6 +134,9 @@ class Config:
     pulse_resample_method: str = "soxr-vhq"  # PulseAudio combine-sink resampler
     description: str = "Soundscape (both speakers)"
     sink_name: str = SINK_NAME
+    remote: bool = False  # let phones on the local network open the dashboard (binds 0.0.0.0 with a token)
+    remote_token: str = ""  # generated the first time the phone remote is used; part of the address phones open
+    ui_port: int = 8787
     connect_timeout_s: float = 25.0
     sink_timeout_s: float = 15.0
 
@@ -221,7 +224,7 @@ class Config:
     # -- settings ----------------------------------------------------------
     SETTABLE = ("engine", "stereo_split", "latency_compensate", "set_default_sink", "resample_quality",
                 "pulse_resample_method", "description", "connect_timeout_s", "sink_timeout_s",
-                "pin_microphone", "microphone")
+                "pin_microphone", "microphone", "remote", "remote_token", "ui_port")
 
     def set_option(self, key: str, raw: object) -> object:
         """Set a scalar option from user input with type coercion; returns the stored value."""
@@ -247,6 +250,8 @@ class Config:
             raise ConfigError(f"engine must be one of {', '.join(ENGINES)}")
         if key == "resample_quality" and not 0 <= int(value) <= 14:  # type: ignore[call-overload]
             raise ConfigError("resample_quality must be between 0 and 14")
+        if key == "ui_port" and not 1 <= int(value) <= 65535:  # type: ignore[call-overload]
+            raise ConfigError("ui_port must be between 1 and 65535")
         setattr(self, key, value)
         return value
 

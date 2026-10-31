@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import socket
 import threading
 import time
 import uuid
@@ -30,6 +31,34 @@ from .session import Session
 
 Log = Callable[[str], None]
 UI_FILE = Path(__file__).with_name("ui.html")
+
+
+def lan_addresses() -> List[str]:
+    """This machine's IPv4 addresses on the local network (no packets are sent)."""
+    found: List[str] = []
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(("10.255.255.255", 1))
+            found.append(probe.getsockname()[0])
+        finally:
+            probe.close()
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = str(info[4][0])
+            if not ip.startswith("127.") and ip not in found:
+                found.append(ip)
+    except (socket.gaierror, OSError):
+        pass
+    return [ip for ip in found if not ip.startswith("127.")]
+
+
+def host_name() -> str:
+    """The Bonjour name phones can resolve on the same network (``name.local``)."""
+    name = socket.gethostname().split(".")[0]
+    return f"{name}.local" if name else ""
 
 
 def load_page() -> str:
@@ -144,6 +173,7 @@ class RemoteApp:
         self.last_sync: Optional[Dict[str, Any]] = None
         self._job_local = threading.local()
         self.on_quit: Optional[Callable[[], None]] = None  # set by serve() when quitting is allowed
+        self.bind: Optional[Tuple[str, int]] = None  # (host, port) the HTTP server listens on, set by serve()
         session.log = self._log  # capture backend progress for the activity log and job logs
 
     def watchdog_tick(self) -> None:
@@ -269,7 +299,21 @@ class RemoteApp:
         st["job"] = active.to_dict() if active else None
         st["engines"] = ["auto", "aggregate", "relay"] if st.get("platform") == "mac" else ["auto", "pipewire", "pulse"]
         st["can_quit"] = self.on_quit is not None
+        st["remote"] = self.remote_info()
         return st
+
+    def remote_info(self) -> Dict[str, Any]:
+        """How a phone on the same network can open this dashboard, if the server listens for it."""
+        host, port = self.bind if self.bind else (None, None)
+        lan = host in ("0.0.0.0", "", "::")
+        urls: List[str] = []
+        if lan and port:
+            suffix = f"?token={self.token}" if self.token else ""
+            names = [host_name()] + lan_addresses()
+            urls = [f"http://{h}:{port}/{suffix}" for h in names if h]
+        return {"enabled": bool(self.session.config.remote), "lan": lan, "port": port,
+                "token_set": bool(self.token), "urls": urls,
+                "qr": next((u for u in urls if u.split("//")[1][0].isdigit()), urls[0] if urls else None)}
 
     @staticmethod
     def _device(d: Any) -> Dict[str, Any]:
@@ -386,10 +430,25 @@ class RemoteApp:
                 return bool(sp.get("muted"))
         return self._mute_state.get(target, False)
 
+    MAC_PLAYERS = ("Spotify", "Music")
+    MAC_VERBS = {"play-pause": "playpause", "play": "play", "pause": "pause", "next": "next track",
+                 "previous": "previous track", "stop": "pause"}
+
     def _media(self, action: str) -> Dict[str, Any]:
         if action not in ("play-pause", "play", "pause", "next", "previous", "stop"):
             raise ValueError(f"unknown media action {action}")
         runner = self.session.runner
+        if self.session.platform == "mac":
+            if not runner.which("osascript"):
+                return {"ok": False, "message": "osascript is missing; cannot drive Music or Spotify"}
+            for player in self.MAC_PLAYERS:
+                probe = runner.run(["osascript", "-e", f'tell application "System Events" to (name of processes) contains "{player}"'],
+                                   timeout=5)
+                if probe.ok and probe.stdout.strip().lower() == "true":
+                    res = runner.run(["osascript", "-e", f'tell application "{player}" to {self.MAC_VERBS[action]}'], timeout=5)
+                    return {"ok": res.ok, "player": player,
+                            "message": (res.stderr or "").strip() or f"{player}: {self.MAC_VERBS[action]}"}
+            return {"ok": False, "message": "Music or Spotify is not running on the Mac; control playback on the device that is playing"}
         if not runner.which("playerctl"):
             return {"ok": False, "message": "install playerctl for media keys"}
         res = runner.run(["playerctl", action], timeout=5)
@@ -438,6 +497,7 @@ def serve(session: Session, host: str = "127.0.0.1", port: int = 8787, log: Log 
           quit_allowed: bool = False, startup_up: bool = False) -> None:
     app = RemoteApp(session, log, token=token)
     httpd = ThreadingHTTPServer((host, port), make_handler(app))
+    app.bind = (host, int(httpd.server_address[1]))
     if quit_allowed:
         app.on_quit = lambda: threading.Thread(target=httpd.shutdown, daemon=True).start()
     if startup_up and len(session.config.speakers) >= 2:

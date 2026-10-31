@@ -182,6 +182,22 @@ same thing from a terminal is `soundscape start --detach`.
 Click Quit in the dashboard (top right), or run `soundscape down` and
 `pkill -f "soundscape start"`.
 
+## Phone remote
+
+**The phone cannot open the dashboard**
+
+Both devices must be on the same Wi-Fi (guest networks often isolate clients). The switch
+takes effect only after Soundscape restarts: Quit in the dashboard, open the app again, and
+check that the Phone remote section says "listening on this Wi-Fi". If macOS asked whether
+Python may accept incoming connections, it must be allowed (System Settings > Network >
+Firewall > Options). Type the address exactly as shown, including `?token=...`; the `.local`
+address works on iPhones, the numeric one everywhere.
+
+**The transport buttons do nothing on the Mac**
+
+They drive Music or Spotify through AppleScript; whichever is running gets the command. Music
+playing from the phone over AirPlay is controlled on the phone.
+
 ## Daemon / systemd / launchd
 
 ```bash

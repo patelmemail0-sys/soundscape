@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import signal
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from . import __version__, tones
 from .config import ENGINES, Config, Speaker
@@ -299,10 +300,26 @@ def start_log_path(session: Session) -> Path:
     return session.paths.state_dir / "start.log"
 
 
+def resolve_bind(session: Session, args: argparse.Namespace) -> Tuple[str, int, Optional[str]]:
+    """Where the dashboard listens: explicit flags win; otherwise the phone-remote setting decides
+    (0.0.0.0 with the stored token, generated on first use) and the default is this machine only."""
+    cfg = session.config
+    host = args.host or ("0.0.0.0" if cfg.remote else "127.0.0.1")
+    port = args.port or cfg.ui_port
+    token = args.token
+    if token is None and cfg.remote:
+        if not cfg.remote_token:
+            cfg.remote_token = secrets.token_urlsafe(9)
+            session.save_config()
+        token = cfg.remote_token
+    return host, port, token or None
+
+
 def launch_detached(session: Session, args: argparse.Namespace) -> int:
     """Used by the Soundscape app: return at once, leave a background process running."""
     import subprocess
     import webbrowser
+    args.host, args.port, args.token = resolve_bind(session, args)
     url = _dashboard_url(args.host, args.port, args.token)
     if _server_alive(args.host, args.port, args.token):
         say(f"Soundscape is already running; opening {url}")
@@ -343,8 +360,9 @@ def cmd_start(session: Session, args: argparse.Namespace) -> int:
     say("Soundscape starting ...")
     if len(session.config.speakers) < 2:
         say("no speakers configured yet: the dashboard will open so you can scan and add them")
+    host, port, token = resolve_bind(session, args)
     try:
-        serve(session, host=args.host, port=args.port, log=say, token=args.token,
+        serve(session, host=host, port=port, log=say, token=token,
               open_browser=not args.no_open, watchdog_s=args.interval, quit_allowed=True, startup_up=True)
     finally:
         if args.keep:
@@ -360,8 +378,8 @@ def cmd_start(session: Session, args: argparse.Namespace) -> int:
 
 def cmd_ui(session: Session, args: argparse.Namespace) -> int:
     from .remote import serve
-    serve(session, host=args.host, port=args.port, log=say, token=args.token,
-          open_browser=not args.no_open and args.command == "ui")
+    host, port, token = resolve_bind(session, args)
+    serve(session, host=host, port=port, log=say, token=token, open_browser=not args.no_open and args.command == "ui")
     return 0
 
 
@@ -632,9 +650,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--volume", type=int, help="player volume percent (mpv only)")
 
     s = sub.add_parser("start", help="everyday launcher: join the speakers, open the dashboard, keep everything running")
-    s.add_argument("--host", default="127.0.0.1", help="bind address (0.0.0.0 for LAN access)")
-    s.add_argument("--port", type=int, default=8787)
-    s.add_argument("--token", help="require this token (open the page with ?token=...)")
+    s.add_argument("--host", help="bind address; default: this machine only, or 0.0.0.0 when the phone remote is on")
+    s.add_argument("--port", type=int, help="default: the ui_port setting (8787)")
+    s.add_argument("--token", help="require this token (open the page with ?token=...); default: the phone remote's token")
     s.add_argument("--no-open", action="store_true", help="do not open a browser")
     s.add_argument("--interval", type=float, default=10.0, help="seconds between health checks")
     s.add_argument("--keep", action="store_true", help="leave the output in place on quit")
@@ -643,9 +661,9 @@ def build_parser() -> argparse.ArgumentParser:
     for name, help_text in (("ui", "open the web dashboard: visualize and control everything"),
                             ("remote", "same dashboard, for your phone (does not open a browser)")):
         s = sub.add_parser(name, help=help_text)
-        s.add_argument("--host", default="127.0.0.1", help="bind address (0.0.0.0 for LAN access)")
-        s.add_argument("--port", type=int, default=8787)
-        s.add_argument("--token", help="require this token (open the page with ?token=...)")
+        s.add_argument("--host", help="bind address; default: this machine only, or 0.0.0.0 when the phone remote is on")
+        s.add_argument("--port", type=int, help="default: the ui_port setting (8787)")
+        s.add_argument("--token", help="require this token (open the page with ?token=...); default: the phone remote's token")
         s.add_argument("--no-open", action="store_true", help="do not open a browser")
 
     s = sub.add_parser("daemon", help="keep the speakers joined; reconnect when they drop (for systemd)")

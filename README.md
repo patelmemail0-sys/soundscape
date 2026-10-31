@@ -266,7 +266,19 @@ The page follows the system light or dark appearance, works at phone width, and 
 build step: it is one HTML file served by the Python process.
 
 Scans, calibration and up/down run in the background, so the page keeps updating while
-they work. For your phone, expose it on the network with a token:
+they work.
+
+### Phone remote
+
+Turn on **Phone remote** in the dashboard (or `soundscape config set remote true`), then
+quit and open Soundscape again. The dashboard now listens on your Wi-Fi with a token in the
+address and shows that address and a QR code: point the phone's camera at it, or type the
+address into the phone's browser, and the whole dashboard is in your hand: volumes, mute,
+trims, calibration, and play/pause/skip for Music or Spotify on the Mac. The token keeps
+everyone else on the network out. The first time, macOS asks whether Python may accept
+incoming connections: click Allow.
+
+By hand instead:
 
 ```bash
 soundscape ui --host 0.0.0.0 --port 8787 --token mysecret
@@ -274,7 +286,8 @@ soundscape ui --host 0.0.0.0 --port 8787 --token mysecret
 
 and open `http://<this-machine>:8787/?token=mysecret`. Without `--token` anyone on the
 network could change volumes, so the default bind is `127.0.0.1`. `soundscape remote` is
-the same server without opening a browser.
+the same server without opening a browser. Music playing *from* the phone (AirPlay) is
+controlled on the phone itself.
 
 ## Keep it running
 

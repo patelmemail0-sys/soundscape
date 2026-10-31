@@ -227,3 +227,22 @@ def test_distance_api(session, world):
     assert status == 400 and "not a distance" in body["error"]
     status, body, _ = app.handle("POST", "/api/distance", {"target": "left", "distance": ""})
     assert status == 200 and body["distance_m"] is None
+
+
+def test_remote_info_lists_phone_addresses(session, world, monkeypatch):
+    from soundscape import remote as remote_mod
+    monkeypatch.setattr(remote_mod, "lan_addresses", lambda: ["192.168.1.5"])
+    monkeypatch.setattr(remote_mod, "host_name", lambda: "yogis-mac.local")
+    app = app_for(session, token="abc")
+    info = app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]
+    assert info == {"enabled": False, "lan": False, "port": None, "token_set": True, "urls": [], "qr": None}
+    app.bind = ("0.0.0.0", 8787)
+    session.config.remote = True
+    info = app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]
+    assert info["enabled"] and info["lan"] and info["port"] == 8787 and info["token_set"]
+    assert info["urls"] == ["http://yogis-mac.local:8787/?token=abc", "http://192.168.1.5:8787/?token=abc"]
+    assert info["qr"] == "http://192.168.1.5:8787/?token=abc"
+    app.token = None
+    assert app.handle("GET", "/api/status", None)[1]["remote"]["urls"][1] == "http://192.168.1.5:8787/"
+    assert app.handle("POST", "/api/config", {"key": "remote", "value": False})[1]["value"] is False
+    assert session.config.remote is False

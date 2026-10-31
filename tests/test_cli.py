@@ -263,3 +263,24 @@ def test_distance_command(runner, world, tmp_path, capsys):
     assert Config.load(root / "config" / "config.json").speakers[1].distance_m is None
     assert run(runner, root, "distance", "right", "far") == 2
     assert run(runner, root, "distance", "right") == 2
+
+
+def test_resolve_bind_follows_the_phone_remote_setting(runner, world, tmp_path):
+    import argparse
+
+    from soundscape.paths import Paths
+    from soundscape.session import Session
+    cfg = Config()
+    session = Session(runner=runner, paths=Paths.under(tmp_path / "root"), config=cfg, sleep=lambda _s: None)
+    args = argparse.Namespace(host=None, port=None, token=None)
+    assert cli.resolve_bind(session, args) == ("127.0.0.1", 8787, None)
+    cfg.remote = True
+    host, port, token = cli.resolve_bind(session, args)
+    assert host == "0.0.0.0" and port == 8787 and token and len(token) >= 10
+    assert Config.load(tmp_path / "root" / "config" / "config.json").remote_token == token  # generated once, remembered
+    assert cli.resolve_bind(session, args)[2] == token
+    cfg.ui_port = 9000
+    assert cli.resolve_bind(session, argparse.Namespace(host="127.0.0.1", port=None, token="mine")) == ("127.0.0.1", 9000, "mine")
+    assert run(runner, tmp_path / "root", "config", "set", "ui_port", "99999") == 2
+    assert run(runner, tmp_path / "root", "config", "set", "remote", "on") == 0
+    assert Config.load(tmp_path / "root" / "config" / "config.json").remote is True
