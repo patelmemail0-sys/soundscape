@@ -273,12 +273,9 @@ def test_resolve_bind_follows_the_phone_remote_setting(runner, world, tmp_path):
     cfg = Config()
     session = Session(runner=runner, paths=Paths.under(tmp_path / "root"), config=cfg, sleep=lambda _s: None)
     args = argparse.Namespace(host=None, port=None, token=None)
-    assert cli.resolve_bind(session, args) == ("127.0.0.1", 8787, None)
+    assert cli.resolve_bind(session, args) == ("0.0.0.0", 8787, None)  # always reachable, so the switch works live
     cfg.remote = True
-    host, port, token = cli.resolve_bind(session, args)
-    assert host == "0.0.0.0" and port == 8787 and token and len(token) >= 10
-    assert Config.load(tmp_path / "root" / "config" / "config.json").remote_token == token  # generated once, remembered
-    assert cli.resolve_bind(session, args)[2] == token
+    assert cli.resolve_bind(session, args) == ("0.0.0.0", 8787, None)  # pairing, not a shared token, guards the network side
     cfg.ui_port = 9000
     assert cli.resolve_bind(session, argparse.Namespace(host="127.0.0.1", port=None, token="mine")) == ("127.0.0.1", 9000, "mine")
     assert run(runner, tmp_path / "root", "config", "set", "ui_port", "99999") == 2

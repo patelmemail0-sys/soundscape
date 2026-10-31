@@ -194,6 +194,15 @@ class Remotes:
                  "in_control": bool(ctl and ctl["id"] == did)} for did, d in self.devices.items()]
 
 
+OFF_PAGE = (
+    "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+    "<title>Soundscape</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#1d1a17;color:#f0ede8;"
+    "font:17px/1.5 -apple-system,system-ui,sans-serif;padding:24px}main{max-width:26rem}h1{font-size:1.25rem;margin:0 0 8px}p{margin:0;color:#c4beb3}"
+    "</style></head><body><main><h1>Soundscape's phone remote is off</h1>"
+    "<p>Turn on <b>Phone remote</b> in the dashboard on the Mac, then open this page again.</p></main></body></html>"
+)
+
+
 def load_page() -> str:
     """The page file is read on every request so an updated install shows up without a restart;
     the running process's version is injected so the page can tell when a restart is needed."""
@@ -368,12 +377,14 @@ class RemoteApp:
     OWNER_ONLY = ("/api/pairing", "/api/forget")
 
     def access(self, path: str, headers: Optional[Dict[str, str]], client: Optional[str]) -> Tuple[str, Optional[str]]:
-        """Who is asking: ('owner', None) from this machine with the master token; a paired phone is
-        ('control', id) or ('view', id) while another phone is active; ('none', None) otherwise.
-        With the phone remote off, the master token also works from the network (manual --token use)."""
+        """Who is asking: ('owner', None) from this machine with the master token; from the network,
+        ('off', None) while the phone remote is switched off, a paired phone as ('control', id) or
+        ('view', id) while another phone is active, and ('none', None) for anything unpaired."""
         headers = headers or {}
-        if is_local_client(client) or not self.session.config.remote:
+        if is_local_client(client):
             return ("owner", None) if self.authorized(path, headers) else ("none", None)
+        if not self.session.config.remote:
+            return "off", None
         device = headers.get("X-Soundscape-Device") or ""
         token = headers.get("X-Soundscape-Token") or ""
         if device and self.remotes.check(device, token):
@@ -388,13 +399,18 @@ class RemoteApp:
         route = parsed.path.rstrip("/") or "/"
         query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         json_t = "application/json"
+        remote_off = not is_local_client(client) and not self.session.config.remote
         if method == "GET" and route == "/":
+            if remote_off:
+                return 403, OFF_PAGE, "text/html; charset=utf-8"
             return 200, load_page(), "text/html; charset=utf-8"  # the page is public; every API call is checked
+        if remote_off:
+            return 403, {"error": "the phone remote is off", "hint": "turn it on in the dashboard on the Mac"}, json_t
         if method == "POST" and route == "/api/pair":
             return self._pair(body or {}, client)
         level, device = self.access(path, headers, client)
         if level == "none":
-            if is_local_client(client) or not self.session.config.remote:
+            if is_local_client(client):
                 return 401, {"error": "token required", "hint": "open the UI with ?token=... as printed when it started"}, json_t
             return 401, {"error": "this phone is not paired", "hint": "scan the QR code on the Mac's dashboard"}, json_t
         if level == "view":
@@ -496,32 +512,29 @@ class RemoteApp:
         code = self.remotes.pairing_code()
         host, port = self.bind if self.bind else (None, None)
         base = None
-        if host in ("0.0.0.0", "", "::") and port:
+        if self.session.config.remote and host in ("0.0.0.0", "", "::") and port:
             ips = lan_addresses()
             base = f"http://{ips[0] if ips else host_name()}:{port}/"
         return {"code": code, "url": f"{base}?pair={code}" if base else None,
                 "expires_s": round(max(0.0, self.remotes.code_expires - self.remotes.clock()))}
 
     def remote_info(self, owner: bool = True) -> Dict[str, Any]:
-        """How a phone on the same network joins: with the phone remote on, the address carries the
-        single-use pairing code (owner's view only); otherwise the plain address with the master token."""
+        """How a phone on the same network joins while the phone remote is on: the address carries
+        the single-use pairing code (owner's view only). ``lan`` says whether the server can be reached
+        from the network at all (it is, unless started with --host 127.0.0.1)."""
         host, port = self.bind if self.bind else (None, None)
         lan = host in ("0.0.0.0", "", "::")
-        pairing_mode = bool(self.session.config.remote)
-        info: Dict[str, Any] = {"enabled": pairing_mode, "lan": lan, "port": port, "token_set": bool(self.token),
+        enabled = bool(self.session.config.remote)
+        info: Dict[str, Any] = {"enabled": enabled, "lan": lan, "port": port, "token_set": bool(self.token),
                                 "urls": [], "qr": None, "controller": self.remotes.controller_info(),
                                 "devices": self.remotes.describe() if owner else []}
         if not owner:
             return info
-        if lan and port:
-            if pairing_mode:
-                code = self.remotes.pairing_code()
-                suffix = f"?pair={code}"
-                info["pairing"] = {"code": code, "expires_s": round(max(0.0, self.remotes.code_expires - self.remotes.clock()))}
-            else:
-                suffix = f"?token={self.token}" if self.token else ""
+        if lan and enabled and port:
+            code = self.remotes.pairing_code()
+            info["pairing"] = {"code": code, "expires_s": round(max(0.0, self.remotes.code_expires - self.remotes.clock()))}
             names = [host_name()] + lan_addresses()
-            info["urls"] = [f"http://{h}:{port}/{suffix}" for h in names if h]
+            info["urls"] = [f"http://{h}:{port}/?pair={code}" for h in names if h]
             info["qr"] = next((u for u in info["urls"] if u.split("//")[1][0].isdigit()), info["urls"][0] if info["urls"] else None)
         return info
 
@@ -580,6 +593,11 @@ class RemoteApp:
                 s.save_config()
             finally:
                 lock.release()
+            if body["key"] == "remote":
+                # off shuts phones out at once (their requests get 403); they stay known, and the one that
+                # had control gets it back when the switch returns within the idle timeout
+                self._log("phone remote " + ("on: phones can pair with the code on the dashboard" if value else "off"))
+                return {"ok": True, "key": "remote", "value": value, "note": None}
             return {"ok": True, "key": body["key"], "value": value,
                     "note": "run Up again to apply" if s.state() else None}
         lock = self._quick()

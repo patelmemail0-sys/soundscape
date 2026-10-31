@@ -237,17 +237,16 @@ def test_remote_info_lists_phone_addresses(session, world, monkeypatch):
     info = app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]
     assert {k: info[k] for k in ("enabled", "lan", "port", "token_set", "urls", "qr")} == {"enabled": False, "lan": False, "port": None, "token_set": True, "urls": [], "qr": None}
     app.bind = ("0.0.0.0", 8787)
+    info = app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]
+    assert info["lan"] and not info["enabled"] and info["urls"] == []  # reachable, but the switch is off
     session.config.remote = True
     info = app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]
     assert info["enabled"] and info["lan"] and info["port"] == 8787 and info["token_set"]
     code = info["pairing"]["code"]  # phone-remote mode: the address carries the single-use code, never the master token
     assert info["urls"] == [f"http://yogis-mac.local:8787/?pair={code}", f"http://192.168.1.5:8787/?pair={code}"]
     assert info["qr"] == f"http://192.168.1.5:8787/?pair={code}"
-    session.config.remote = False  # manual --token mode: the plain address with the token
-    assert app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]["urls"][1] == "http://192.168.1.5:8787/?token=abc"
     app.token = None
-    assert app.handle("GET", "/api/status", None)[1]["remote"]["urls"][1] == "http://192.168.1.5:8787/"
-    session.config.remote = True
+    assert app.handle("GET", "/api/status", None)[1]["remote"]["urls"][1].startswith("http://192.168.1.5:8787/?pair=")
     assert app.handle("POST", "/api/config", {"key": "remote", "value": False})[1]["value"] is False
     assert session.config.remote is False
 
@@ -316,9 +315,31 @@ def test_pairing_one_phone_at_a_time(session, world, monkeypatch):
     assert app2.handle("POST", "/api/pair", {"code": code4, "device_id": "phone-c", "label": "iPad"}, None, "192.168.1.22")[0] == 400
 
 
-def test_manual_token_mode_still_admits_the_network(session, world):
+def test_phone_remote_switch_works_live(session, world, monkeypatch):
+    from soundscape import remote as remote_mod
+    monkeypatch.setattr(remote_mod, "lan_addresses", lambda: ["192.168.1.5"])
+    monkeypatch.setattr(remote_mod, "host_name", lambda: "mac.local")
     session.config.remote = False
     app = app_for(session, token="s3cret")
-    assert app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "s3cret"}, "192.168.1.9")[1]["access"] == "owner"
-    assert app.handle("GET", "/api/status", None, None, "192.168.1.9")[0] == 401
-    assert app.handle("GET", "/api/status", None, None, "127.0.0.1")[0] == 401
+    app.bind = ("0.0.0.0", 8787)
+    owner = {"X-Soundscape-Token": "s3cret"}
+    # switched off: the network gets a plain "it is off" page and nothing else, token or not
+    status, body, ctype = app.handle("GET", "/", None, None, "192.168.1.9")
+    assert status == 403 and "phone remote is off" in body and "html" in ctype
+    assert app.handle("GET", "/api/status", None, owner, "192.168.1.9")[0] == 403
+    assert app.handle("POST", "/api/pair", {"code": "ABCDEF", "device_id": "p", "label": "x"}, None, "192.168.1.9")[0] == 403
+    info = app.handle("GET", "/api/status", None, owner)[1]["remote"]
+    assert info["lan"] and not info["enabled"] and info["urls"] == [] and "pairing" not in info
+    assert app.handle("GET", "/api/status", None, None, "127.0.0.1")[0] == 401  # the Mac still needs its token
+    # the owner flips the switch: phones can pair at once, no restart
+    assert app.handle("POST", "/api/config", {"key": "remote", "value": True}, owner)[1]["value"] is True
+    code = app.handle("GET", "/api/status", None, owner)[1]["remote"]["pairing"]["code"]
+    tok = app.handle("POST", "/api/pair", {"code": code, "device_id": "p1", "label": "iPhone"}, None, "192.168.1.9")[1]["token"]
+    p1 = {"X-Soundscape-Device": "p1", "X-Soundscape-Token": tok}
+    assert app.handle("GET", "/api/status", None, p1, "192.168.1.9")[1]["access"] == "control"
+    # off again: the phone is shut out immediately but stays known
+    assert app.handle("POST", "/api/config", {"key": "remote", "value": False}, owner)[1]["value"] is False
+    assert app.handle("GET", "/api/status", None, p1, "192.168.1.9")[0] == 403
+    assert app.remotes.controller == "p1" and "p1" in app.remotes.devices  # remembered, so it resumes when the switch returns
+    assert app.handle("POST", "/api/config", {"key": "remote", "value": True}, owner)[1]["value"] is True
+    assert app.handle("GET", "/api/status", None, p1, "192.168.1.9")[1]["access"] == "control"

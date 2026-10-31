@@ -186,12 +186,18 @@ Click Quit in the dashboard (top right), or run `soundscape down` and
 
 **The phone cannot open the dashboard**
 
-Both devices must be on the same Wi-Fi (guest networks often isolate clients). The switch
-takes effect only after Soundscape restarts: Quit in the dashboard, open the app again, and
-check that the Phone remote section says "listening on this Wi-Fi". If macOS asked whether
-Python may accept incoming connections, it must be allowed (System Settings > Network >
-Firewall > Options). Type the address exactly as shown, including `?token=...`; the `.local`
-address works on iPhones, the numeric one everywhere.
+Both devices must be on the same Wi-Fi (guest networks often isolate clients). Check that the
+Phone remote section says "on: listening on this Wi-Fi"; if it says the server was started
+with `--host 127.0.0.1`, start it without that flag. If macOS asked whether Python may accept
+incoming connections, it must be allowed (System Settings > Network > Firewall > Options).
+Type the address exactly as shown, including `?pair=...`; the `.local` address works on
+iPhones, the numeric one everywhere.
+
+**"unknown setting ..." or a banner saying Soundscape was updated**
+
+The page on disk is newer than the service that is running. Open the Soundscape app again:
+it restarts the old service by itself. Or click Quit in the dashboard and run
+`soundscape start`.
 
 **"This phone is not paired" / "Another phone is in control"**
 

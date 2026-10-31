@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import secrets
 import signal
 import sys
 import tempfile
@@ -272,17 +271,44 @@ def cmd_play(session: Session, args: argparse.Namespace) -> int:
                 loop=args.loop, shuffle=args.shuffle, volume=args.volume)
 
 
+def _probe_host(host: str) -> str:
+    return "127.0.0.1" if host in ("0.0.0.0", "") else host
+
+
 def _server_alive(host: str, port: int, token: Optional[str]) -> bool:
     import urllib.error
     import urllib.request
-    probe_host = "127.0.0.1" if host in ("0.0.0.0", "") else host
-    req = urllib.request.Request(f"http://{probe_host}:{port}/api/status",
+    req = urllib.request.Request(f"http://{_probe_host(host)}:{port}/api/status",
                                  headers={"X-Soundscape-Token": token or ""})
     try:
         with urllib.request.urlopen(req, timeout=1.0) as resp:
             return resp.status == 200
     except urllib.error.HTTPError as exc:
         return exc.code == 401  # a Soundscape server with a different token is still a server
+    except Exception:
+        return False
+
+
+def _server_version(host: str, port: int, token: Optional[str]) -> Optional[str]:
+    """The version of the running dashboard server, or None when it cannot be read."""
+    import urllib.request
+    req = urllib.request.Request(f"http://{_probe_host(host)}:{port}/api/status",
+                                 headers={"X-Soundscape-Token": token or ""})
+    try:
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            return str(json.loads(resp.read().decode()).get("version") or "")
+    except Exception:
+        return None
+
+
+def _quit_server(host: str, port: int, token: Optional[str]) -> bool:
+    """Ask a running dashboard server to shut down (what the Quit button does)."""
+    import urllib.request
+    req = urllib.request.Request(f"http://{_probe_host(host)}:{port}/api/quit", data=b"{}", method="POST",
+                                 headers={"X-Soundscape-Token": token or "", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            return resp.status == 200
     except Exception:
         return False
 
@@ -301,18 +327,10 @@ def start_log_path(session: Session) -> Path:
 
 
 def resolve_bind(session: Session, args: argparse.Namespace) -> Tuple[str, int, Optional[str]]:
-    """Where the dashboard listens: explicit flags win; otherwise the phone-remote setting decides
-    (0.0.0.0 with the stored token, generated on first use) and the default is this machine only."""
-    cfg = session.config
-    host = args.host or ("0.0.0.0" if cfg.remote else "127.0.0.1")
-    port = args.port or cfg.ui_port
-    token = args.token
-    if token is None and cfg.remote:
-        if not cfg.remote_token:
-            cfg.remote_token = secrets.token_urlsafe(9)
-            session.save_config()
-        token = cfg.remote_token
-    return host, port, token or None
+    """Where the dashboard listens. It always listens on every interface so the Phone remote switch
+    can be flipped live; while the switch is off, every request from the network is refused.
+    Explicit --host/--port/--token flags win over the settings."""
+    return args.host or "0.0.0.0", args.port or session.config.ui_port, args.token or None
 
 
 def launch_detached(session: Session, args: argparse.Namespace) -> int:
@@ -322,10 +340,20 @@ def launch_detached(session: Session, args: argparse.Namespace) -> int:
     args.host, args.port, args.token = resolve_bind(session, args)
     url = _dashboard_url(args.host, args.port, args.token)
     if _server_alive(args.host, args.port, args.token):
-        say(f"Soundscape is already running; opening {url}")
-        if not args.no_open:
-            webbrowser.open(url)
-        return 0
+        old_token = args.token or session.config.remote_token or None  # older versions protected the page with it
+        running = _server_version(args.host, args.port, old_token)
+        if running is None or running == __version__:
+            say(f"Soundscape is already running; opening {url}")
+            if not args.no_open:
+                webbrowser.open(url)
+            return 0
+        say(f"Soundscape {running} is running but {__version__} is installed; restarting it")
+        if not _quit_server(args.host, args.port, old_token):
+            err("could not stop the running Soundscape; click Quit in its dashboard, then open the app again")
+            return 1
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and _server_alive(args.host, args.port, old_token):
+            time.sleep(0.3)
     log_path = start_log_path(session)
     argv = [sys.executable, "-m", "soundscape"]
     if args.root:

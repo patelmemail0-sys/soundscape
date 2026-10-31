@@ -134,8 +134,8 @@ class Config:
     pulse_resample_method: str = "soxr-vhq"  # PulseAudio combine-sink resampler
     description: str = "Soundscape (both speakers)"
     sink_name: str = SINK_NAME
-    remote: bool = False  # let phones on the local network open the dashboard (binds 0.0.0.0 with a token)
-    remote_token: str = ""  # generated the first time the phone remote is used; part of the address phones open
+    remote: bool = False  # let paired phones on the local network use the dashboard; switchable live
+    remote_token: str = ""  # legacy (0.7.x protected the network side with this token); kept so old configs load
     ui_port: int = 8787
     connect_timeout_s: float = 25.0
     sink_timeout_s: float = 15.0

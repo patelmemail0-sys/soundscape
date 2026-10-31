@@ -218,3 +218,25 @@ def test_start_log_path(runner, world, tmp_path, monkeypatch):
     monkeypatch.setattr(s, "platform", "mac")
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     assert cli.start_log_path(s) == tmp_path / "Library" / "Logs" / "Soundscape.log"
+
+
+def test_launch_detached_restarts_an_outdated_server(runner, world, tmp_path, monkeypatch, capsys):
+    from soundscape import __version__
+    spawned, opened, quits = {}, [], []
+    alive = iter([True, True, False, True])  # running (old) -> still up -> gone after quit -> the new one answers
+    monkeypatch.setattr(cli, "_server_alive", lambda host, port, token: next(alive, True))
+    monkeypatch.setattr(cli, "_server_version", lambda host, port, token: "0.7.0")
+    monkeypatch.setattr(cli, "_quit_server", lambda host, port, token: quits.append((host, port, token)) or True)
+    monkeypatch.setattr("subprocess.Popen", lambda argv, **kw: spawned.setdefault("argv", argv))
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url))
+    monkeypatch.setattr(cli.time, "sleep", lambda _s: None)
+    assert cli.main(["--root", str(tmp_path), "start", "--detach"], runner=runner) == 0
+    out = capsys.readouterr().out
+    assert "0.7.0 is running but " + __version__ + " is installed" in out and quits == [("0.0.0.0", 8787, None)]
+    assert "start" in spawned["argv"] and opened == ["http://127.0.0.1:8787/"]
+    # same version: nothing is restarted
+    monkeypatch.setattr(cli, "_server_alive", lambda host, port, token: True)
+    monkeypatch.setattr(cli, "_server_version", lambda host, port, token: __version__)
+    monkeypatch.setattr("subprocess.Popen", lambda *a, **k: pytest.fail("must not spawn"))
+    assert cli.main(["--root", str(tmp_path), "start", "--detach", "--no-open"], runner=runner) == 0
+    assert "already running" in capsys.readouterr().out

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.1 - 2026-10-31
+
+* The Phone remote switch works live: no restart. Soundscape always listens on the network;
+  while the switch is off every outside request gets a plain "phone remote is off" page, and
+  flipping it on shows the pairing code at once. Switching it off shuts the active phone out
+  immediately; known phones come back when it is on again.
+* Opening the Soundscape app after an update restarts a service that is still running the
+  old version (the cause of "unknown setting" errors after `git pull`), and the dashboard
+  repeats the update notice as a toast instead of only a banner at the top.
+* Fixed the toast layout when no spinner is shown.
+
 ## 0.8.0 - 2026-10-31
 
 * Phone pairing, one phone at a time. The QR code now carries a single-use pairing code;

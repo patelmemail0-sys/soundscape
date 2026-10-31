@@ -248,10 +248,11 @@ section{min-width:0}
 /* toast */
 .toast{position:fixed;right:18px;bottom:18px;max-width:min(400px,calc(100vw - 36px));background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);padding:11px 14px;box-shadow:var(--shadow);display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity 180ms var(--ease),transform 180ms var(--ease);z-index:9}
 .toast.show{opacity:1;transform:none;pointer-events:auto}
-.toast b{font-weight:600;font-size:var(--t0)}
-.toast .body{grid-column:2;font-size:var(--t0);color:var(--fg-2);white-space:pre-wrap;max-height:120px;overflow:auto}
+.toast .spin{grid-column:1;grid-row:1}
+.toast b{grid-column:2;grid-row:1;font-weight:600;font-size:var(--t0)}
+.toast .body{grid-column:2;grid-row:2;font-size:var(--t0);color:var(--fg-2);white-space:pre-wrap;max-height:120px;overflow:auto}
 .toast .body:empty{display:none}
-.toast .close{padding:3px}
+.toast .close{grid-column:3;grid-row:1;padding:3px}
 @media (max-width:560px){.toast{left:16px;right:16px;bottom:16px}}
 
 .col{display:grid;gap:30px;align-content:start;min-width:0}
@@ -273,7 +274,7 @@ section{min-width:0}
 </style>
 </head>
 <body>
-<div id="stale" class="banner warn" hidden>Soundscape was updated on disk but this server is still the old version. Quit and open Soundscape again (or run <code>soundscape start</code>).</div>
+<div id="stale" class="banner warn" hidden>Soundscape was updated, but the service still runs the old version. Open the Soundscape app again (it restarts the service), or run <code>soundscape start</code>.</div>
 <div id="offline" class="banner bad" hidden>Can't reach Soundscape. If it is not running, open the Soundscape app or run <code>soundscape start</code>; this page keeps retrying.</div>
 <header class="bar">
   <div class="brand">
@@ -374,7 +375,7 @@ section{min-width:0}
 
     <section aria-labelledby="hRemote">
       <div class="sec-head"><h2 id="hRemote">Phone remote</h2><span class="meta" id="remoteNote"></span></div>
-      <div class="setting"><div class="txt"><label for="cfgRemote">Let phones on this Wi-Fi open this dashboard</label><span class="small" id="remoteHint">phones connect with a single-use code from this screen, one at a time; takes effect the next time Soundscape starts</span></div><input type="checkbox" class="switch" role="switch" id="cfgRemote"></div>
+      <div class="setting"><div class="txt"><label for="cfgRemote">Let phones on this Wi-Fi open this dashboard</label><span class="small" id="remoteHint">phones connect with the single-use code below, one at a time; off shuts every phone out at once</span></div><input type="checkbox" class="switch" role="switch" id="cfgRemote"></div>
       <div class="remote" id="remoteBox" hidden>
         <div class="qr" id="qr"></div>
         <div class="remote-text">
@@ -425,10 +426,11 @@ function deviceLabel() {
   return `${dev} (${br})`;
 }
 function authHeaders() { return {'X-Soundscape-Token': TOKEN || (DEVICE ? DEVICE.token : ''), 'X-Soundscape-Device': DEVICE ? DEVICE.id : ''}; }
-const PAGE_VERSION = '0.8.0', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.8.1', SERVER_VERSION = '__SERVER_VERSION__';
 const $ = id => document.getElementById(id);
 let status = null, jobId = null, pathWasUp = null;
-if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) $('stale').hidden = false;
+const STALE = SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__');
+if (STALE) $('stale').hidden = false;
 window.addEventListener('error', e => toast('Page error', e.message, false));
 window.addEventListener('unhandledrejection', e => { if (e.reason && e.reason.message && e.reason.message !== 'error') toast('Request failed', e.reason.message, false); });
 
@@ -517,7 +519,7 @@ async function api(path, body) {
   if (body !== undefined) headers['content-type'] = 'application/json';
   const r = await fetch(path, body !== undefined ? {method: 'POST', headers, body: JSON.stringify(body)} : {headers});
   const j = await r.json().catch(() => ({error: 'bad response'}));
-  if (r.status === 401 || r.status === 423) { showGate(r.status === 423 ? {access: 'view', controller: j.controller} : j); throw new Error(j.error || 'error'); }
+  if (r.status === 401 || r.status === 403 || r.status === 423) { showGate(r.status === 423 ? {access: 'view', controller: j.controller} : j); throw new Error(j.error || 'error'); }
   if (!r.ok) { toast(j.error || 'error', j.hint || '', false); throw new Error(j.error || 'error'); }
   return j;
 }
@@ -583,12 +585,13 @@ async function refresh() {
   let r, j = null;
   try { r = await fetch('/api/status', {headers: authHeaders()}); j = await r.json().catch(() => null); }
   catch (e) { $('engine').textContent = 'offline'; $('engine').classList.remove('live'); $('offline').hidden = false; return; }
-  if (r.status === 401) { showGate(j || {error: 'not connected'}); return; }
+  if (r.status === 401 || r.status === 403) { showGate(j || {error: 'not connected'}); return; }
   if (!r.ok || !j) { $('engine').textContent = 'offline'; $('engine').classList.remove('live'); $('offline').hidden = false; return; }
   $('offline').hidden = true;
   if (j.access === 'view') showGate(j); else hideGate();
   status = j;
   render(status);
+  if (STALE) toast('Soundscape was updated', 'open the Soundscape app again to restart the service (or run soundscape start); until then some controls may not work', false);
 }
 function render(s) {
   if (!s || !Array.isArray(s.speakers)) return;
@@ -725,12 +728,10 @@ function renderRemote(s) {
   if (sec.hidden) return;
   const r = s.remote || {}, want = !!(s.config && s.config.remote);
   if (document.activeElement !== $('cfgRemote')) $('cfgRemote').checked = want;
-  const box = $('remoteBox'), live = !!(r.lan && r.urls && r.urls.length);
+  const box = $('remoteBox'), live = !!(r.enabled && r.lan && r.urls && r.urls.length);
   box.hidden = !live;
-  $('remoteNote').textContent = live ? (r.token_set ? 'listening on this Wi-Fi' : 'listening on this Wi-Fi, no token') : (want ? 'quit and open Soundscape again to turn on' : 'off');
-  $('remoteHint').textContent = live && !r.token_set ? 'warning: without a token anyone on the network can change volumes; start with --token or turn the switch on and restart'
-    : 'phones connect with a single-use code from this screen, one at a time; takes effect the next time Soundscape starts';
-  if (!live) return;
+  $('remoteNote').textContent = live ? 'on: listening on this Wi-Fi' : (want && !r.lan ? 'started with --host 127.0.0.1: not reachable from the network' : (want ? 'on' : 'off'));
+  if (!live) { if (!want) $('phones').hidden = true; return; }
   const ipUrl = r.qr || r.urls[0], others = r.urls.filter(u => u !== ipUrl);
   $('remoteUrl').textContent = ipUrl;
   $('remoteAlt').textContent = others.length ? 'also: ' + others.join('  ') : '';
