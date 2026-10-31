@@ -147,6 +147,11 @@ buffer (`/api/log`). Request handling is separated from sockets so it is unit-te
 directly, and the page is driven end to end in headless Chromium against the emulated
 backend during development.
 
+The page's visual system is recorded in `DESIGN.md` (tokens in its frontmatter, prose rules
+in the body) with a machine-readable sidecar at `.impeccable/design.json`; the surface brief
+for the dashboard lives under `.impeccable/surfaces/`. The redesign followed the Impeccable
+design skill installed at `.agent/skills/impeccable/` (playbooks under `reference/`).
+
 ## Design rules
 
 1. **Never guess an audio path.** `node.dont-reconnect`, explicit `target.object`, and a

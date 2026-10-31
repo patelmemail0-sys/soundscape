@@ -235,14 +235,22 @@ soundscape ui
 
 Opens a local web page that shows and controls everything:
 
-* the live **signal path**: your apps, the Soundscape mix, each speaker with its delay, lit
-  up when audio can flow;
-* a **card per speaker** with connection state, volume, mute, test tone and a delay stepper;
-* **calibration** with one click and a chart of each speaker's measured lag and the trim
-  that was applied;
-* **scan and add** speakers with a position name, **settings** (engine, stereo split,
-  latency compensation, default output), the **doctor** checks with fixes, and an
-  **activity log**.
+* a **status strip** that answers the first questions at a glance: is the output up and on
+  which engine, how many speakers are connected (and whether one slipped into headset
+  mode), the measured sync spread, and which microphone the system is using;
+* the live **signal path**: your apps, the Soundscape mix, and a branch to each speaker
+  carrying its delay trim, lit when audio can flow;
+* a **card per speaker** with connection state and mode, device and sample rate, volume,
+  mute, test tone, a delay stepper, and a Reconnect button when a speaker is in headset
+  mode;
+* **calibration** with one click and an *arrival ruler*: each speaker's measured arrival
+  and where it lands after its trim, on one time axis;
+* **scan and add** speakers with a name for where they stand, **settings** (engine,
+  microphone pinning, latency compensation, default output), the **doctor** checks with a
+  fix for each problem, and the **activity log**.
+
+The page follows the system light or dark appearance, works at phone width, and needs no
+build step: it is one HTML file served by the Python process.
 
 Scans, calibration and up/down run in the background, so the page keeps updating while
 they work. For your phone, expose it on the network with a token:

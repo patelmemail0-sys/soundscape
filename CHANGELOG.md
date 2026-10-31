@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.0 - 2026-10-31
+
+Dashboard redesign, built with the Impeccable design skill.
+
+* The page leads with a status strip (output, speakers, sync, microphone) and the live
+  signal path, now drawn as a flow that stacks vertically on a phone; speaker cards follow.
+* Calibration results are shown as an arrival ruler: each speaker's measured arrival and
+  where it lands after its trim, on one time axis, in that speaker's colour.
+* Settings are real rows with switches; doctor results use drawn icons; a first-run empty
+  state explains the three steps; an offline banner appears when the service is gone; and
+  every control has hover, focus, disabled, busy and error states.
+* Light and dark schemes follow the system, one system font on a fixed scale, tabular
+  figures for every number. Media keys are hidden on macOS, where they do not apply.
+  Bring up is disabled until two speakers are configured.
+* The Impeccable skill is installed under `.agent/skills/impeccable/`; the product record
+  (`PRODUCT.md`), the dashboard's surface brief (`.impeccable/surfaces/`) and the design
+  system (`DESIGN.md`) live in the repository.
+
 ## 0.5.2 - 2026-10-31
 
 * App icon: two speakers with their sound waves meeting in the middle. Shipped as

@@ -9,3 +9,7 @@ dist/
 *.wav
 !tests/fixtures/*.wav
 .mypy_cache/
+
+# Impeccable working files: review captures and downloaded engine binaries
+.impeccable/review/
+**/skills/impeccable/scripts/bin/

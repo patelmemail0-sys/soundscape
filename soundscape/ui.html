@@ -3,137 +3,364 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
 <title>Soundscape</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201024%201024%22%3E%3Crect%20x%3D%22100%22%20y%3D%22100%22%20width%3D%22824%22%20height%3D%22824%22%20rx%3D%22186%22%20fill%3D%22%2316263a%22%2F%3E%3Crect%20x%3D%22190%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Crect%20x%3D%22648%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%234fd1a5%22%20stroke-width%3D%2234%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M414%20452c52%2042%2052%20118%200%20160%22%2F%3E%3Cpath%20d%3D%22M610%20452c-52%2042-52%20118%200%20160%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22512%22%20cy%3D%22532%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3C%2Fsvg%3E">
 <style>
-:root{--bg:#0e1116;--panel:#161b23;--line:#262d39;--fg:#e9edf3;--mut:#8a94a6;--acc:#4fd1a5;--acc2:#6aa5ff;--warn:#f0b35a;--bad:#ef6b6b;--ok:#4fd1a5}
-@media (prefers-color-scheme: light){:root{--bg:#f4f6f9;--panel:#fff;--line:#dfe4ec;--fg:#141922;--mut:#5f6978;--acc:#0e9f73;--acc2:#2f6fe4;--warn:#b7791f;--bad:#c93c3c;--ok:#0e9f73}}
-*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,system-ui,Segoe UI,Roboto,sans-serif}
-a{color:var(--acc2)}
-header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5;flex-wrap:wrap}
-header h1{font-size:18px;margin:0;display:flex;align-items:center;gap:10px}
-.dot{width:11px;height:11px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 3px rgba(239,107,107,.15)}.dot.on{background:var(--ok);box-shadow:0 0 0 3px rgba(79,209,165,.2)}
-.pill{font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
-.spacer{flex:1}
-main{max-width:1180px;margin:0 auto;padding:18px 20px 60px;display:grid;grid-template-columns:1fr;gap:16px}
-@media(min-width:900px){main{grid-template-columns:1.2fr .8fr}.wide{grid-column:1/-1}}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
-.panel h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 12px;display:flex;align-items:center;gap:10px}
-.panel h2 .spacer{flex:1}
-button{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer}
-button:hover{border-color:var(--acc2)}button:disabled{opacity:.5;cursor:default}
-button.pri{background:var(--acc);border-color:var(--acc);color:#07140f;font-weight:600}
-button.danger{color:var(--bad)}button.sm{padding:4px 9px;font-size:13px;border-radius:7px}
-input[type=range]{width:100%;accent-color:var(--acc)}
-input[type=text],input[type=number],select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit}
-.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row.between{justify-content:space-between}
-.sub{color:var(--mut);font-size:13px}.mono{font-variant-numeric:tabular-nums}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
-.card{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--bg)}
-.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
-.badge{font-size:11px;padding:2px 7px;border-radius:6px;background:var(--line);color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
-.badge.left,.badge.right{background:rgba(106,165,255,.15);color:var(--acc2)}
-.st{font-size:12px}.st.ok{color:var(--ok)}.st.bad{color:var(--bad)}.st.warn{color:var(--warn)}
-.stepper{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.stepper button{border:0;border-radius:0;padding:4px 9px}.stepper span{padding:4px 10px;min-width:74px;text-align:center;background:var(--bg)}
-svg text{fill:var(--fg);font-size:12px}
-.bars{display:grid;gap:8px}.bar{display:grid;grid-template-columns:120px 1fr 90px;align-items:center;gap:10px;font-size:13px}
-.track{height:12px;background:var(--line);border-radius:6px;position:relative}
-.track i{position:absolute;top:0;bottom:0;background:var(--acc2);border-radius:6px}
-.track b{position:absolute;top:-4px;width:2px;height:20px;background:var(--fg);left:50%}
-.log{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;white-space:pre-wrap}
-.toast{position:fixed;right:18px;bottom:18px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--acc2);border-radius:12px;padding:12px 14px;max-width:380px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:none}
-.toast.show{display:block}.toast .sub{margin-top:4px;max-height:120px;overflow:auto;white-space:pre-wrap}
-.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--acc2);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px}
-@keyframes s{to{transform:rotate(360deg)}}
-.checks div{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13.5px}.checks div:last-child{border:0}
-.checks .fix{color:var(--mut);display:block;margin-left:22px}
-.empty{color:var(--mut);font-size:13.5px;padding:8px 0}
-.tabs{display:flex;gap:6px}.tabs button.on{border-color:var(--acc2);color:var(--acc2)}
+:root{
+  color-scheme:dark;
+  --bg:oklch(19% 0.012 60);--bar:oklch(15% 0.014 60);--surface:oklch(23% 0.012 60);--surface-2:oklch(28% 0.012 60);
+  --line:oklch(33% 0.012 60);--line-strong:oklch(42% 0.012 60);--fg:oklch(95% 0.008 80);--fg-2:oklch(73% 0.012 70);
+  --accent:oklch(72% 0.14 255);--accent-strong:oklch(52% 0.19 258);--accent-strong-hover:oklch(57% 0.19 258);--on-accent:#fff;
+  --ok:oklch(76% 0.16 150);--warn:oklch(80% 0.14 75);--bad:oklch(72% 0.18 25);
+  --s1:oklch(74% 0.14 290);--s2:oklch(74% 0.12 195);--s3:oklch(74% 0.16 330);--s4:oklch(78% 0.15 110);--s5:oklch(76% 0.15 50);--s6:oklch(74% 0.15 0);
+  --shadow:0 10px 28px -10px oklch(0% 0 0 / .6),0 2px 6px oklch(0% 0 0 / .25);
+  --t-1:.8rem;--t0:.8667rem;--t1:1.2rem;--t2:1.44rem;
+  --r:10px;--r-s:7px;--ease:cubic-bezier(.2,.7,.2,1);--dur:200ms;
+}
+@media (prefers-color-scheme: light){:root{
+  color-scheme:light;
+  --bg:oklch(97.5% 0.004 250);--bar:oklch(92.5% 0.012 250);--surface:oklch(100% 0 0);--surface-2:oklch(95% 0.005 250);
+  --line:oklch(88% 0.008 250);--line-strong:oklch(78% 0.01 250);--fg:oklch(18% 0.01 250);--fg-2:oklch(45% 0.012 250);
+  --accent:oklch(50% 0.2 258);--accent-strong:oklch(50% 0.2 258);--accent-strong-hover:oklch(45% 0.2 258);
+  --ok:oklch(46% 0.15 150);--warn:oklch(47% 0.13 70);--bad:oklch(48% 0.19 25);
+  --s1:oklch(52% 0.17 290);--s2:oklch(52% 0.12 195);--s3:oklch(54% 0.19 330);--s4:oklch(55% 0.15 110);--s5:oklch(58% 0.17 50);--s6:oklch(54% 0.18 0);
+  --shadow:0 10px 28px -10px oklch(0% 0 0 / .28),0 2px 6px oklch(0% 0 0 / .12);
+}}
+*{box-sizing:border-box}
+html{font-size:15px;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:1rem/1.45 -apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums;caret-color:var(--accent)}
+::selection{background:color-mix(in oklch,var(--accent) 35%,transparent);color:var(--fg)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3{margin:0;font-weight:600;letter-spacing:-0.01em;text-wrap:balance}
+h2{font-size:var(--t1)}h3{font-size:1rem}
+p{margin:0}
+a{color:var(--accent)}
+code,kbd{font:0.9em ui-monospace,SFMono-Regular,Menlo,monospace}
+.small{font-size:var(--t0);color:var(--fg-2)}
+[hidden]{display:none !important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* top bar */
+.banner{padding:8px 24px;font-size:var(--t0);border-bottom:1px solid var(--line)}
+.banner.warn{background:color-mix(in oklch,var(--warn) 22%,var(--bg))}
+.banner.bad{background:color-mix(in oklch,var(--bad) 22%,var(--bg))}
+.bar{display:flex;align-items:center;gap:14px;padding:10px 24px;background:var(--bar);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand h1{font-size:1.0667rem}
+.mark{width:26px;height:26px;border-radius:7px;display:block}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--bad);flex:none}
+.dot.on{background:var(--ok)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-1);color:var(--fg-2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;white-space:nowrap;line-height:1.4}
+.chip.live{color:var(--fg);border-color:var(--accent)}
+.status{display:flex;gap:8px;min-width:0;flex-wrap:wrap}
+.actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+/* controls */
+button{font:inherit;font-size:var(--t0);font-weight:500;color:var(--fg);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-s);padding:6px 12px;cursor:pointer;line-height:1.3;transition:background var(--dur) var(--ease),border-color var(--dur) var(--ease),color var(--dur) var(--ease)}
+button:hover{background:var(--surface-2);border-color:var(--fg-2)}
+button:active{background:color-mix(in oklch,var(--surface-2) 70%,var(--bg))}
+button:disabled{opacity:.45;cursor:not-allowed}
+button[aria-busy="true"]{cursor:progress}
+button.pri{background:var(--accent-strong);border-color:var(--accent-strong);color:var(--on-accent)}
+button.pri:hover{background:var(--accent-strong-hover);border-color:var(--accent-strong-hover)}
+button.quiet{background:transparent;border-color:transparent;color:var(--fg-2)}
+button.quiet:hover{background:var(--surface-2);color:var(--fg)}
+button.danger{color:var(--bad)}
+button.danger:hover{color:var(--bad);border-color:var(--bad)}
+button[aria-pressed="true"]{background:var(--surface-2);border-color:var(--fg)}
+button svg{width:16px;height:16px;display:block}
+.icon{width:16px;height:16px;flex:none}
+input[type=range]{width:100%;accent-color:var(--c,var(--accent));margin:0;height:22px}
+input[type=text],input[type=number],select{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-s);padding:6px 9px;min-width:0}
+select{padding-right:28px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center}
+input[type=checkbox].switch{appearance:none;width:38px;height:22px;border-radius:11px;background:var(--surface-2);border:1px solid var(--line-strong);position:relative;cursor:pointer;margin:0;flex:none;transition:background var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+input[type=checkbox].switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--fg-2);transition:transform var(--dur) var(--ease),background var(--dur) var(--ease)}
+input[type=checkbox].switch:checked{background:var(--accent-strong);border-color:var(--accent-strong)}
+input[type=checkbox].switch:checked::after{transform:translateX(16px);background:#fff}
+output{font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;align-items:stretch;border:1px solid var(--line-strong);border-radius:var(--r-s);overflow:hidden}
+.seg button{border:0;border-radius:0;padding:4px 9px;background:var(--surface)}
+.seg button + button,.seg output + button{border-left:1px solid var(--line)}
+.seg output{display:flex;align-items:center;justify-content:center;min-width:84px;padding:0 8px;font-size:var(--t0);border-left:1px solid var(--line);background:var(--bg)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* page */
+main{max-width:1240px;margin:0 auto;padding:18px 24px 72px;display:grid;grid-template-columns:1fr;gap:30px 28px}
+section{min-width:0}
+.sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:9px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.sec-head .meta{margin-left:auto;font-size:var(--t0);color:var(--fg-2);display:flex;gap:8px;align-items:center}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lead{color:var(--fg-2);font-size:var(--t0);max-width:68ch}
+.empty{color:var(--fg-2);font-size:var(--t0);padding:6px 0}
+.empty ol{margin:6px 0 0;padding-left:1.3em}
+
+/* summary strip */
+.summary{display:flex;gap:18px 28px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.facts{display:grid;grid-template-columns:1fr;gap:5px 24px;flex:1 1 420px;min-width:0}
+@media (min-width:600px){.facts{grid-template-columns:repeat(2,minmax(0,auto))}}
+.fact{display:flex;gap:7px;align-items:baseline;font-size:var(--t0);min-width:0}
+.fact .k{color:var(--fg-2)}
+.fact .v{font-weight:600;color:var(--fg);overflow-wrap:anywhere}
+.fact .v.ok{color:var(--ok)}.fact .v.warn{color:var(--warn)}.fact .v.bad{color:var(--bad)}
+.master{display:grid;grid-template-columns:auto minmax(140px,220px) 52px auto;align-items:center;gap:10px;flex:0 1 460px}
+.master label{font-size:var(--t0);color:var(--fg-2);white-space:nowrap}
+.master output{text-align:right;font-size:var(--t0)}
+
+/* signal path */
+.flow{display:grid;grid-template-columns:1fr;gap:0;align-items:center}
+.node{border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;background:var(--surface);min-width:0;transition:border-color var(--dur) var(--ease)}
+.node.on{border-color:var(--accent)}
+.node.warn{border-color:var(--warn)}
+.node-t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node-s{font-size:var(--t0);color:var(--fg-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.link{background:var(--line);transition:background var(--dur) var(--ease)}
+.link.on{background:var(--accent)}
+.flow > .link{width:2px;height:22px;margin-left:27px}
+.fan{position:relative;display:grid;gap:10px;margin-left:27px;padding-left:22px}
+.fan::before{content:"";position:absolute;left:0;top:0;bottom:26px;width:2px;background:var(--line);transition:background var(--dur) var(--ease)}
+.fan.on::before{background:var(--accent)}
+.branch{position:relative;display:grid;grid-template-columns:auto 18px minmax(0,1fr);align-items:center;min-height:52px}
+.branch::before{content:"";position:absolute;left:-22px;top:50%;width:22px;height:2px;margin-top:-1px;background:var(--line);transition:background var(--dur) var(--ease)}
+.branch.on::before{background:var(--accent)}
+.branch > .link{height:2px}
+.trim{font-size:var(--t-1);border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--fg-2);white-space:nowrap;background:var(--bg)}
+.trim.set{color:var(--fg);border-color:var(--c)}
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--c,var(--fg-2));display:inline-block;flex:none}
+@media (min-width:760px){
+  .flow{grid-template-columns:minmax(140px,1fr) 40px minmax(170px,1.25fr) 40px minmax(240px,2.3fr)}
+  .flow > .link{width:auto;height:2px;margin:0}
+  .fan{margin-left:0;padding-left:22px}
+  .fan::before{top:26px}
+}
+
+/* speakers */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px 12px;background:var(--surface);display:grid;gap:10px;min-width:0}
+.card-head{display:flex;align-items:center;gap:8px;min-width:0}
+.card-head .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.card-head .chip{flex:none}
+.st{margin-left:auto;font-size:var(--t-1);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:var(--fg-2)}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--bad);flex:none}
+.st.ok{color:var(--ok)}.st.ok::before{background:var(--ok)}
+.st.warn{color:var(--warn)}.st.warn::before{background:var(--warn)}
+.st.bad{color:var(--bad)}
+.sink{font-size:var(--t-1);color:var(--fg-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:-6px}
+.alert{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:var(--t0);padding:8px 10px;border-radius:var(--r-s);background:color-mix(in oklch,var(--warn) 18%,var(--surface));border:1px solid color-mix(in oklch,var(--warn) 45%,var(--line))}
+.alert .icon{color:var(--warn)}
+.alert button{margin-left:auto}
+.ctl{display:grid;grid-template-columns:52px minmax(0,1fr) 46px;align-items:center;gap:10px}
+.ctl > span,.ctl > label{font-size:var(--t0);color:var(--fg-2)}
+.ctl output{text-align:right;font-size:var(--t0)}
+.ctl.delay{grid-template-columns:52px 1fr}
+.card .buttons{display:flex;gap:8px;flex-wrap:wrap;padding-top:2px}
+.card .buttons .quiet{margin-left:auto}
+.card.skel{min-height:190px;border-style:dashed;background:transparent}
+.card.skel > i{display:block;height:12px;border-radius:6px;background:var(--surface-2)}
+.card.skel > i:first-child{width:55%;height:16px}
+
+/* sync ruler */
+.ruler{display:grid;gap:8px}
+.axis{position:relative;height:18px;font-size:var(--t-1);color:var(--fg-2);margin:0 0 0 132px}
+.axis span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
+.axis .lo{left:0;transform:none}
+.axis .hi{left:100%;transform:translateX(-100%)}
+.lane{display:grid;grid-template-columns:120px minmax(0,1fr) 150px;gap:12px;align-items:center;font-size:var(--t0)}
+.lane .who{display:flex;gap:7px;align-items:center;min-width:0}
+.lane .who span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track{position:relative;height:26px;border-radius:6px;background:var(--surface-2)}
+.track .zero{position:absolute;top:0;bottom:0;width:1px;background:var(--line-strong)}
+.track .mark{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:var(--c);transform:translate(-50%,-50%);box-shadow:0 0 0 2px var(--surface-2)}
+.track .mark.after{background:var(--surface-2);border:2px solid var(--c);box-shadow:none}
+.track .span{position:absolute;top:50%;height:2px;margin-top:-1px;background:var(--c);opacity:.55}
+.lane .val{color:var(--fg-2);text-align:right;white-space:nowrap}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:var(--t-1);color:var(--fg-2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--fg-2);vertical-align:-1px;margin-right:5px}
+.legend i.after{background:transparent;border:2px solid var(--fg-2);width:8px;height:8px}
+@media (max-width:560px){.lane{grid-template-columns:90px minmax(0,1fr)}.lane .val{grid-column:2;text-align:left}.axis{margin-left:102px}}
+
+/* found devices */
+.found{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.found .card .row input{flex:1;min-width:0;width:0}
+.sel{flex:1 1 200px;min-width:0;display:flex}
+.sel select{width:0;min-width:100%}
+
+/* settings */
+.setting{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+.setting:last-child{border-bottom:0}
+.setting .txt{min-width:0}
+.setting label{display:block;font-weight:500}
+.setting .small{display:block;margin-top:1px}
+.setting select{flex:none;max-width:46%}
+
+/* doctor */
+.checks{display:grid}
+.check{display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:var(--t0)}
+.check:last-child{border-bottom:0}
+.check .icon{margin-top:2px}
+.check.ok .icon{color:var(--ok)}.check.warn .icon{color:var(--warn)}.check.fail .icon{color:var(--bad)}
+.check .fix{display:block;color:var(--fg-2);margin-top:2px}
+
+/* activity */
+.log{font:var(--t-1)/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:280px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;white-space:pre-wrap;word-break:break-word;color:var(--fg-2)}
+.log::selection{color:var(--fg)}
+
+/* toast */
+.toast{position:fixed;right:18px;bottom:18px;max-width:min(400px,calc(100vw - 36px));background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);padding:11px 14px;box-shadow:var(--shadow);display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity 180ms var(--ease),transform 180ms var(--ease);z-index:9}
+.toast.show{opacity:1;transform:none;pointer-events:auto}
+.toast b{font-weight:600;font-size:var(--t0)}
+.toast .body{grid-column:2;font-size:var(--t0);color:var(--fg-2);white-space:pre-wrap;max-height:120px;overflow:auto}
+.toast .body:empty{display:none}
+.toast .close{padding:3px}
+@media (max-width:560px){.toast{left:16px;right:16px;bottom:16px}}
+
+@media (min-width:960px){
+  main{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+  .wide{grid-column:1/-1}
+  .col{display:grid;gap:30px;align-content:start;min-width:0}
+}
+@media (max-width:900px){.bar{flex-wrap:wrap}}
+@media (max-width:640px){
+  .bar{flex-wrap:wrap;padding:10px 16px;position:static}
+  .actions{margin-left:0;width:100%}
+  .actions button{flex:1 1 auto}
+  main{padding:14px 16px 72px;gap:26px}
+  .banner{padding:8px 16px}
+  .master{grid-template-columns:auto minmax(0,1fr) 48px auto;flex-basis:100%}
+}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{transition:none !important;animation-duration:1.5s !important}}
 </style>
 </head>
 <body>
-<div id="stale" style="display:none;background:var(--warn);color:#1a1200;padding:8px 20px;font-size:14px">Soundscape was updated on disk but this server is still the old version. Press Ctrl-C in the terminal and run <b>soundscape ui</b> again.</div>
-<header>
-  <h1><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201024%201024%22%3E%3Crect%20x%3D%22100%22%20y%3D%22100%22%20width%3D%22824%22%20height%3D%22824%22%20rx%3D%22186%22%20fill%3D%22%2316263a%22%2F%3E%3Crect%20x%3D%22190%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Crect%20x%3D%22648%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%234fd1a5%22%20stroke-width%3D%2234%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M414%20452c52%2042%2052%20118%200%20160%22%2F%3E%3Cpath%20d%3D%22M610%20452c-52%2042-52%20118%200%20160%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22512%22%20cy%3D%22532%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3C%2Fsvg%3E" alt="" width="28" height="28" style="border-radius:7px"><span class="dot" id="dot"></span>Soundscape <span class="pill" id="ver"></span></h1>
-  <span class="pill" id="engine">connecting...</span>
-  <span class="pill" id="platform"></span>
-  <span class="spacer"></span>
-  <button class="pri" id="btnUp" onclick="job('/api/up',{})">Bring up</button>
-  <button id="btnDown" onclick="job('/api/down',{})">Take down</button>
-  <button onclick="job('/api/test',{})">Test tones</button>
-  <button id="btnQuit" class="danger" style="display:none" onclick="quitApp()">Quit</button>
+<div id="stale" class="banner warn" hidden>Soundscape was updated on disk but this server is still the old version. Quit and open Soundscape again (or run <code>soundscape start</code>).</div>
+<div id="offline" class="banner bad" hidden>Can't reach Soundscape. If it is not running, open the Soundscape app or run <code>soundscape start</code>; this page keeps retrying.</div>
+<header class="bar">
+  <div class="brand">
+    <img class="mark" alt="" width="26" height="26" src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201024%201024%22%3E%3Crect%20x%3D%22100%22%20y%3D%22100%22%20width%3D%22824%22%20height%3D%22824%22%20rx%3D%22186%22%20fill%3D%22%2316263a%22%2F%3E%3Crect%20x%3D%22190%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22283%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Crect%20x%3D%22648%22%20y%3D%22318%22%20width%3D%22186%22%20height%3D%22388%22%20rx%3D%2244%22%20fill%3D%22%23eef2f7%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22420%22%20r%3D%2238%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2274%22%20fill%3D%22%230a1320%22%2F%3E%3Ccircle%20cx%3D%22741%22%20cy%3D%22584%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%234fd1a5%22%20stroke-width%3D%2234%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M414%20452c52%2042%2052%20118%200%20160%22%2F%3E%3Cpath%20d%3D%22M610%20452c-52%2042-52%20118%200%20160%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22512%22%20cy%3D%22532%22%20r%3D%2230%22%20fill%3D%22%234fd1a5%22%2F%3E%3C%2Fsvg%3E">
+    <span class="dot" id="dot" aria-hidden="true"></span>
+    <h1>Soundscape</h1>
+    <span class="chip" id="ver"></span>
+  </div>
+  <div class="status">
+    <span class="chip" id="engine" role="status">connecting...</span>
+    <span class="chip" id="platform"></span>
+  </div>
+  <div class="actions">
+    <button class="pri" id="btnUp">Bring up</button>
+    <button id="btnDown" disabled>Take down</button>
+    <button id="btnTest">Test tones</button>
+    <button id="btnQuit" class="quiet danger" hidden>Quit</button>
+  </div>
 </header>
+
 <main>
-  <section class="panel wide">
-    <h2>Signal path <span class="spacer"></span><span class="sub" id="pathNote"></span></h2>
-    <svg id="path" width="100%" height="200" viewBox="0 0 1000 200" preserveAspectRatio="xMidYMid meet"></svg>
-  </section>
-
-  <section class="panel">
-    <h2>Speakers <span class="spacer"></span>
-      <span class="sub mono" id="masterVal"></span>
-    </h2>
-    <div class="row" style="margin-bottom:10px">
-      <span class="sub" style="min-width:70px" id="masterLabel">Master</span>
-      <input type="range" min="0" max="100" id="master" style="flex:1" oninput="vol('all',this.value)">
-      <button class="sm" onclick="mute('all')">mute</button>
+  <section class="summary wide" aria-label="Status">
+    <div class="facts">
+      <div class="fact"><span class="k">Output</span><span class="v" id="fOutput">…</span></div>
+      <div class="fact"><span class="k">Speakers</span><span class="v" id="fSpeakers">…</span></div>
+      <div class="fact"><span class="k">Sync</span><span class="v" id="fSync">…</span></div>
+      <div class="fact"><span class="k">Microphone</span><span class="v" id="fMic">…</span></div>
     </div>
-    <div class="grid" id="speakers"></div>
-    <div class="row" style="margin-top:12px">
-      <button onclick="media('previous')">&#9664;&#9664;</button>
-      <button onclick="media('play-pause')">&#9654; / &#10074;&#10074;</button>
-      <button onclick="media('next')">&#9654;&#9654;</button>
-      <span class="sub">media keys via playerctl (Linux)</span>
+    <div class="master">
+      <label for="master" id="masterLabel">Master</label>
+      <input type="range" min="0" max="100" id="master" aria-label="Master volume">
+      <output id="masterVal" for="master"></output>
+      <button id="btnMuteAll" aria-label="Mute all speakers">Mute</button>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Sync <span class="spacer"></span><span class="sub" id="syncNote"></span></h2>
-    <div class="row">
-      <select id="source"><option value="">built-in microphone (recommended)</option></select>
-      <button class="pri" onclick="calibrate()">Calibrate with microphone</button>
-      <button onclick="resetTrims()">Reset trims</button>
+  <section class="wide" aria-labelledby="hPath">
+    <div class="sec-head"><h2 id="hPath">Signal path</h2><span class="meta" id="pathNote"></span></div>
+    <div class="flow" id="path">
+      <div class="node"><div class="node-t">Your apps</div><div class="node-s">…</div></div>
+      <div class="link" aria-hidden="true"></div>
+      <div class="node"><div class="node-t">Soundscape</div><div class="node-s">connecting…</div></div>
+      <div class="link" aria-hidden="true"></div>
+      <div class="fan"></div>
     </div>
-    <p class="sub">Plays one chirp per speaker, three seconds apart, records them with the microphone and delays everyone to match the slowest speaker. Keep the room quiet; put the laptop roughly between the speakers. Never use a Bluetooth speaker's own microphone: it switches that speaker into headset mode and breaks the timing.</p>
-    <div class="bars" id="syncBars"><div class="empty">No calibration yet. Current trims are shown on each speaker card.</div></div>
   </section>
 
-  <section class="panel">
-    <h2>Add a speaker <span class="spacer"></span>
-      <button class="sm" onclick="scan()">Scan 10 s</button>
-    </h2>
-    <p class="sub">Put the speaker in pairing mode (hold its Bluetooth button), scan, then add it with a position: <b>left</b> and <b>right</b> are special for stereo split, anything else is a name.</p>
-    <div id="found" class="empty">Paired devices appear here after a scan.</div>
-  </section>
+  <div class="col">
+    <section aria-labelledby="hSpeakers">
+      <div class="sec-head"><h2 id="hSpeakers">Speakers</h2><span class="meta" id="speakerNote"></span></div>
+      <div class="cards" id="speakers">
+        <div class="card skel" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="card skel" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="row" id="mediaRow" style="margin-top:14px" hidden>
+        <button data-media="previous" aria-label="Previous track"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+        <button data-media="play-pause" aria-label="Play or pause"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4l9 8-9 8zM15 5h2.5v14H15zm4.5 0H22v14h-2.5z"/></svg></button>
+        <button data-media="next" aria-label="Next track"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+        <span class="small">media keys through playerctl</span>
+      </div>
+    </section>
 
-  <section class="panel">
-    <h2>Settings <span class="spacer"></span><span class="sub">changes apply on the next Bring up</span></h2>
-    <div class="row between"><label>Engine <span class="sub" id="engineHint"></span></label><select id="cfgEngine" onchange="cfg('engine',this.value)"></select></div>
-    <div class="row between" style="margin-top:8px"><label>Pin the system microphone to the built-in mic <span class="sub" id="micNote"></span></label><input type="checkbox" id="cfgPin" onchange="cfg('pin_microphone',this.checked)"></div>
-    <div class="row between" style="margin-top:8px"><label>Automatic latency compensation</label><input type="checkbox" id="cfgComp" onchange="cfg('latency_compensate',this.checked)"></div>
-    <div class="row between" style="margin-top:8px"><label>Make it the default output while up</label><input type="checkbox" id="cfgDefault" onchange="cfg('set_default_sink',this.checked)"></div>
-  </section>
+    <section aria-labelledby="hAdd">
+      <div class="sec-head"><h2 id="hAdd">Add a speaker</h2><span class="meta"><button id="btnScan">Scan 10 s</button></span></div>
+      <p class="lead">Put the speaker in pairing mode (hold its Bluetooth button), scan, then add it with a name for where it stands.</p>
+      <div id="found" class="empty" style="margin-top:10px">Speakers found by a scan appear here.</div>
+    </section>
+  </div>
 
-  <section class="panel">
-    <h2>Doctor <span class="spacer"></span><button class="sm" onclick="doctor()">Run checks</button></h2>
-    <div class="checks" id="checks"><div class="empty">Checks Bluetooth, the sound server and the tools Soundscape needs, with a fix for each problem.</div></div>
-  </section>
+  <div class="col">
+    <section aria-labelledby="hSync">
+      <div class="sec-head"><h2 id="hSync">Sync</h2><span class="meta" id="syncNote"></span></div>
+      <div class="row">
+        <button class="pri" id="btnCal">Calibrate with microphone</button>
+        <button id="btnReset">Reset trims</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="small" for="source">Microphone</label>
+        <span class="sel"><select id="source"><option value="">built-in microphone (recommended)</option></select></span>
+      </div>
+      <p class="lead" style="margin-top:10px">One chirp per speaker, recorded with the laptop microphone; everyone is then delayed to match the slowest speaker. Keep the room quiet and the laptop roughly between the speakers.</p>
+      <div class="ruler" id="syncBars" style="margin-top:14px"><div class="empty">No calibration yet. Current trims are shown on each speaker card.</div></div>
+    </section>
 
-  <section class="panel wide">
-    <h2>Activity</h2>
-    <div class="log" id="log"></div>
+    <section aria-labelledby="hSettings">
+      <div class="sec-head"><h2 id="hSettings">Settings</h2><span class="meta">apply on the next Bring up</span></div>
+      <div class="setting"><div class="txt"><label for="cfgEngine">Engine</label><span class="small" id="engineHint">auto picks the best engine for this machine</span></div><select id="cfgEngine"></select></div>
+      <div class="setting"><div class="txt"><label for="cfgPin">Keep the system microphone on the built-in mic</label><span class="small" id="micNote">stops speakers from dropping into headset mode</span></div><input type="checkbox" class="switch" role="switch" id="cfgPin"></div>
+      <div class="setting"><div class="txt"><label for="cfgComp">Automatic latency compensation</label><span class="small">lets the engine correct drift between speakers</span></div><input type="checkbox" class="switch" role="switch" id="cfgComp"></div>
+      <div class="setting"><div class="txt"><label for="cfgDefault">Make Soundscape the default output while up</label><span class="small">every app plays through all speakers</span></div><input type="checkbox" class="switch" role="switch" id="cfgDefault"></div>
+    </section>
+
+    <section aria-labelledby="hDoctor">
+      <div class="sec-head"><h2 id="hDoctor">Doctor</h2><span class="meta"><button id="btnDoctor">Run checks</button></span></div>
+      <div class="checks" id="checks"><div class="empty">Checks Bluetooth, the sound server and the tools Soundscape needs, with a fix for each problem.</div></div>
+    </section>
+  </div>
+
+  <section class="wide" aria-labelledby="hLog">
+    <div class="sec-head"><h2 id="hLog">Activity</h2></div>
+    <div class="log" id="log" aria-live="off">no activity yet</div>
   </section>
 </main>
-<div class="toast" id="toast"><div class="row"><span class="spin" id="toastSpin"></span><b id="toastTitle"></b></div><div class="sub" id="toastBody"></div></div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span class="spin" id="toastSpin" hidden></span>
+  <b id="toastTitle"></b>
+  <button class="quiet close" id="toastClose" aria-label="Dismiss"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  <div class="body" id="toastBody"></div>
+</div>
 
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
-const PAGE_VERSION = '0.5.2', SERVER_VERSION = '__SERVER_VERSION__';
-let status = null, jobId = null, busyPath = false;
-if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) document.getElementById('stale').style.display = 'block';
+const PAGE_VERSION = '0.6.0', SERVER_VERSION = '__SERVER_VERSION__';
+const $ = id => document.getElementById(id);
+let status = null, jobId = null;
+if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) $('stale').hidden = false;
 window.addEventListener('error', e => toast('Page error', e.message, false));
 window.addEventListener('unhandledrejection', e => { if (e.reason && e.reason.message && e.reason.message !== 'error') toast('Request failed', e.reason.message, false); });
+
+const ICON = {
+  ok: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  warn: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 2.5 20h19L12 3.5z"/><path d="M12 10v4.5"/><path d="M12 17.2v.3"/></svg>',
+  fail: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/></svg>',
+};
+const SERIES = 6;
+const seriesVar = i => `var(--s${(i % SERIES) + 1})`;
 
 async function api(path, body) {
   const headers = {'X-Soundscape-Token': TOKEN};
@@ -145,21 +372,23 @@ async function api(path, body) {
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function toast(title, body, spinning) {
-  const t = document.getElementById('toast'); t.classList.add('show');
-  document.getElementById('toastTitle').textContent = title;
-  document.getElementById('toastBody').textContent = body || '';
-  document.getElementById('toastSpin').style.display = spinning ? 'inline-block' : 'none';
+  const t = $('toast'); t.classList.add('show');
+  $('toastTitle').textContent = title;
+  $('toastBody').textContent = body || '';
+  $('toastSpin').hidden = !spinning;
   clearTimeout(t._timer); if (!spinning) t._timer = setTimeout(() => t.classList.remove('show'), 6000);
 }
+$('toastClose').addEventListener('click', () => $('toast').classList.remove('show'));
 
 // ---------- jobs
+const jobWaiters = [];
 async function job(path, body) {
   let r;
   try { r = await api(path, body || {}); } catch (e) { return null; }
-  jobId = r.job.id; toast(r.job.name, '', true); pollJob();
+  jobId = r.job.id; toast(r.job.name, '', true); setBusy(true); pollJob();
   return new Promise(res => { jobWaiters.push(res); });
 }
-const jobWaiters = [];
+function setBusy(on) { $('btnUp').setAttribute('aria-busy', on ? 'true' : 'false'); }
 async function pollJob() {
   if (!jobId) return;
   let j;
@@ -167,53 +396,77 @@ async function pollJob() {
   const lastLines = (j.log || []).slice(-4).join('\n');
   if (j.state === 'running' || j.state === 'queued') { toast(j.name, lastLines, true); setTimeout(pollJob, 600); return; }
   if (j.state === 'done') toast(j.name + ': done', lastLines, false); else toast(j.name + ' failed', (j.error || '') + (j.hint ? '\nhint: ' + j.hint : ''), false);
-  jobId = null; refresh(); refreshLog();
+  jobId = null; setBusy(false); refresh(); refreshLog();
   while (jobWaiters.length) jobWaiters.shift()(j);
 }
 
 // ---------- status
 async function refresh() {
-  try { status = await api('/api/status'); } catch (e) { document.getElementById('engine').textContent = 'offline'; return; }
+  try { status = await api('/api/status'); } catch (e) { $('engine').textContent = 'offline'; $('engine').classList.remove('live'); $('offline').hidden = false; return; }
+  $('offline').hidden = true;
   render(status);
 }
 function render(s) {
   if (!s || !Array.isArray(s.speakers)) return;
-  document.getElementById('dot').className = 'dot' + (s.up ? ' on' : '');
-  document.getElementById('ver').textContent = 'v' + s.version;
-  document.getElementById('engine').textContent = s.up ? `up via ${s.engine}${s.is_default ? ' · default output' : ''}${s.stereo_split ? ' · stereo split' : ''}` : 'down';
-  document.getElementById('platform').textContent = (s.platform === 'mac' ? 'macOS · ' : 'Linux · ') + (s.server && s.server.name ? s.server.name : 'no sound server');
-  document.getElementById('btnUp').textContent = s.up ? 'Rebuild' : 'Bring up';
-  document.getElementById('btnQuit').style.display = s.can_quit ? '' : 'none';
-  document.getElementById('btnDown').disabled = !s.up;
-  document.getElementById('masterLabel').textContent = s.master_label || 'Master';
-  if (s.volume != null && document.activeElement.id !== 'master') { document.getElementById('master').value = s.volume; document.getElementById('masterVal').textContent = s.volume + '%' + (s.muted ? ' muted' : '') + (s.engine === 'relay' && s.volume < 100 ? ' · raise for full level' : ''); }
-  renderSpeakers(s); renderPath(s); renderSettings(s); renderSync(s.last_sync);
-  if (s.job && !jobId) { jobId = s.job.id; pollJob(); }
+  $('dot').className = 'dot' + (s.up ? ' on' : '');
+  $('ver').textContent = 'v' + s.version;
+  const eng = $('engine');
+  eng.textContent = s.up ? `up via ${s.engine}${s.is_default ? ' · default output' : ''}${s.stereo_split ? ' · stereo split' : ''}` : 'down';
+  eng.classList.toggle('live', !!s.up);
+  $('platform').textContent = (s.platform === 'mac' ? 'macOS · ' : 'Linux · ') + (s.server && s.server.name ? s.server.name : 'no sound server');
+  $('btnUp').textContent = s.up ? 'Rebuild' : 'Bring up';
+  $('btnUp').disabled = s.speakers.length < 2;
+  $('btnUp').title = s.speakers.length < 2 ? 'Add two or more speakers first' : '';
+  $('btnQuit').hidden = !s.can_quit;
+  $('btnDown').disabled = !s.up;
+  $('mediaRow').hidden = s.platform === 'mac';
+  $('masterLabel').textContent = s.master_label || 'Master';
+  if (s.volume != null && document.activeElement !== $('master')) {
+    $('master').value = s.volume;
+    $('masterVal').textContent = s.volume + '%';
+  }
+  $('btnMuteAll').textContent = s.muted ? 'Unmute' : 'Mute';
+  $('btnMuteAll').setAttribute('aria-pressed', s.muted ? 'true' : 'false');
+  renderSummary(s); renderSpeakers(s); renderPath(s); renderSettings(s); renderSync(s.last_sync);
+  if (s.job && !jobId) { jobId = s.job.id; setBusy(true); pollJob(); }
+}
+function setFact(id, text, cls) { const el = $(id); el.textContent = text; el.className = 'v' + (cls ? ' ' + cls : ''); }
+function renderSummary(s) {
+  const n = s.speakers.length, con = s.speakers.filter(x => x.connected).length, hs = s.speakers.filter(x => x.mode === 'headset').length;
+  setFact('fOutput', s.up ? `up via ${s.engine}` + (s.is_default ? ', default output' : '') : 'down', s.up ? 'ok' : '');
+  let spk = n ? `${con} of ${n} connected` : 'none configured';
+  if (hs) spk += ` · ${hs} in headset mode`; else if (n && n < 2) spk += ' · add one more';
+  setFact('fSpeakers', spk, hs ? 'warn' : (n && con === n ? 'ok' : (n && s.up ? 'bad' : '')));
+  const m = s.last_sync, trims = s.speakers.some(x => x.offset_ms);
+  if (m && typeof m.spread_ms === 'number') setFact('fSync', m.spread_ms < 1 ? `in sync, spread ${m.spread_ms.toFixed(1)} ms` : `spread ${m.spread_ms.toFixed(1)} ms, trims applied`, m.spread_ms < 1 ? 'ok' : '');
+  else setFact('fSync', trims ? 'manual trims, not measured' : 'not calibrated yet', '');
+  const mic = s.microphone || {};
+  if (s.default_input_is_speaker) setFact('fMic', 'a speaker is the system input', 'bad');
+  else if (mic.pinned) setFact('fMic', mic.ok ? mic.pinned : 'not pinned right now', mic.ok ? 'ok' : 'warn');
+  else setFact('fMic', mic.current || 'not pinned', '');
+  $('speakerNote').textContent = s.volume != null && s.engine === 'relay' && s.volume < 100 ? 'raise the Mac volume for full level' : '';
 }
 function renderSpeakers(s) {
-  const box = document.getElementById('speakers');
-  if (!s.speakers.length) { box.innerHTML = '<div class="empty">No speakers configured yet. Scan and add at least two below.</div>'; return; }
-  for (const sp of s.speakers) {
+  const box = $('speakers');
+  box.querySelectorAll('.skel').forEach(e => e.remove());
+  if (!s.speakers.length) {
+    box.innerHTML = '<div class="empty">No speakers yet. Soundscape needs two or more.<ol><li>Put a speaker in pairing mode.</li><li>Press Scan under Add a speaker.</li><li>Add it with a name for where it stands, then repeat.</li></ol></div>';
+    return;
+  }
+  const emptyMsg = box.querySelector(':scope > .empty'); if (emptyMsg) emptyMsg.remove();
+  s.speakers.forEach((sp, i) => {
     const id = 'sp-' + sp.address.replace(/:/g, '');
-    let el = document.getElementById(id);
+    let el = $(id);
     if (!el) {
-      el = document.createElement('div'); el.className = 'card'; el.id = id; el.dataset.address = sp.address;
+      el = document.createElement('article'); el.className = 'card'; el.id = id; el.dataset.address = sp.address;
       el.innerHTML = `
-        <h3><span class="badge ${esc(sp.position)}">${esc(sp.position)}</span><span class="name"></span><span class="spacer"></span><span class="st"></span></h3>
-        <div class="sub sink"></div>
-        <div class="st bad modewarn" style="display:none;margin-top:6px">headset mode: mono, phone quality, out of sync. <button class="sm" data-act="reconnect">Reconnect</button></div>
-        <div class="row" style="margin-top:8px"><input type="range" min="0" max="100" class="v" style="flex:1"><span class="mono vv" style="width:40px;text-align:right"></span></div>
-        <div class="row between" style="margin-top:8px">
-          <span class="sub">delay</span>
-          <span class="stepper"><button data-act="off" data-d="-5">-5</button><button data-act="off" data-d="-1">-1</button><span class="mono o"></span><button data-act="off" data-d="1">+1</button><button data-act="off" data-d="5">+5</button></span>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button class="sm" data-act="mute">mute</button>
-          <button class="sm" data-act="tone">tone</button>
-          <span class="spacer"></span>
-          <button class="sm danger" data-act="remove">remove</button>
-        </div>`;
-      el.querySelector('.v').addEventListener('input', ev => vol(sp.address, ev.target.value));
+        <div class="card-head"><span class="sdot" aria-hidden="true"></span><h3 class="name"></h3><span class="chip pos"></span><span class="st"></span></div>
+        <div class="sink"></div>
+        <div class="alert modewarn" hidden>${ICON.warn}<span>Headset mode: mono, phone quality, out of sync.</span><button data-act="reconnect">Reconnect</button></div>
+        <label class="ctl"><span>Volume</span><input type="range" min="0" max="100" class="v"><output class="vv"></output></label>
+        <div class="ctl delay"><span id="${id}-d">Delay</span><span class="seg" role="group" aria-labelledby="${id}-d"><button data-act="off" data-d="-5" aria-label="Delay minus 5 ms">−5</button><button data-act="off" data-d="-1" aria-label="Delay minus 1 ms">−1</button><output class="o"></output><button data-act="off" data-d="1" aria-label="Delay plus 1 ms">+1</button><button data-act="off" data-d="5" aria-label="Delay plus 5 ms">+5</button></span></div>
+        <div class="buttons"><button data-act="mute" aria-pressed="false">Mute</button><button data-act="tone">Tone</button><button class="quiet danger" data-act="remove">Remove</button></div>`;
+      el.querySelector('.v').addEventListener('input', ev => { el.querySelector('.vv').textContent = ev.target.value + '%'; vol(sp.address, ev.target.value); });
       el.addEventListener('click', ev => {
         const b = ev.target.closest('button[data-act]'); if (!b) return;
         const act = b.dataset.act, addr = el.dataset.address, name = el.querySelector('.name').textContent;
@@ -225,61 +478,74 @@ function renderSpeakers(s) {
       });
       box.appendChild(el);
     }
+    el.style.setProperty('--c', seriesVar(i));
     el.querySelector('.name').textContent = sp.name;
+    el.querySelector('.pos').textContent = sp.position;
     const st = el.querySelector('.st');
-    st.textContent = sp.connected ? (sp.muted ? 'muted' : 'connected') : (sp.paired ? 'not connected' : 'not paired');
-    st.className = 'st ' + (sp.connected ? (sp.muted ? 'warn' : 'ok') : 'bad');
+    st.textContent = sp.connected ? (sp.mode === 'headset' ? 'headset mode' : sp.muted ? 'muted' : 'connected') : (sp.paired ? 'not connected' : 'not paired');
+    st.className = 'st ' + (sp.connected ? (sp.muted || sp.mode === 'headset' ? 'warn' : 'ok') : 'bad');
     el.querySelector('.sink').textContent = sp.sink ? sp.sink + (sp.sample_rate ? ' · ' + (sp.sample_rate / 1000) + ' kHz' : '') : 'no audio device yet';
-    el.querySelector('.modewarn').style.display = sp.mode === 'headset' ? 'block' : 'none';
-    const v = el.querySelector('.v'); if (sp.volume != null && document.activeElement !== v) { v.value = sp.volume; el.querySelector('.vv').textContent = sp.volume + '%'; }
+    el.querySelector('.modewarn').hidden = sp.mode !== 'headset';
+    const v = el.querySelector('.v'); v.setAttribute('aria-label', 'Volume of ' + sp.name);
+    if (sp.volume != null && document.activeElement !== v) { v.value = sp.volume; el.querySelector('.vv').textContent = sp.volume + '%'; }
     el.querySelector('.o').textContent = (sp.offset_ms || 0).toFixed(1) + ' ms';
-  }
+    const mb = el.querySelector('button[data-act="mute"]'); mb.textContent = sp.muted ? 'Unmute' : 'Mute'; mb.setAttribute('aria-pressed', sp.muted ? 'true' : 'false');
+  });
   for (const el of [...box.children]) if (el.id && !s.speakers.some(sp => 'sp-' + sp.address.replace(/:/g, '') === el.id)) el.remove();
 }
 function renderPath(s) {
-  const svg = document.getElementById('path'); const n = s.speakers.length || 1;
-  const h = Math.max(200, 60 + n * 46); svg.setAttribute('height', h); svg.setAttribute('viewBox', `0 0 1000 ${h}`);
-  const up = s.up, col = up ? 'var(--acc)' : 'var(--line)';
-  let out = '';
-  const node = (x, y, w, label, sub, on) => `<rect x="${x}" y="${y - 24}" width="${w}" height="48" rx="12" fill="var(--bg)" stroke="${on ? 'var(--acc)' : 'var(--line)'}" stroke-width="1.5"/><text x="${x + w / 2}" y="${y - 3}" text-anchor="middle" font-weight="600">${esc(label)}</text><text x="${x + w / 2}" y="${y + 15}" text-anchor="middle" fill="var(--mut)" style="fill:var(--mut)">${esc(sub)}</text>`;
-  const mid = h / 2;
-  out += node(20, mid, 150, 'Your apps', s.is_default ? 'routed here' : (up ? 'select Soundscape output' : 'playing elsewhere'), up);
-  out += `<line x1="170" y1="${mid}" x2="260" y2="${mid}" stroke="${col}" stroke-width="3"/>`;
-  out += node(260, mid, 220, 'Soundscape', up ? `${s.engine} engine · float32 mix` : 'down', up);
+  const box = $('path'); const up = !!s.up;
+  const node = (title, sub, on, extra) => `<div class="node${on ? ' on' : ''}${extra ? ' ' + extra : ''}"><div class="node-t">${esc(title)}</div><div class="node-s">${esc(sub)}</div></div>`;
+  let html = node('Your apps', s.is_default ? 'routed here' : (up ? 'pick Soundscape as the output' : 'playing elsewhere'), up);
+  html += `<div class="link${up ? ' on' : ''}" aria-hidden="true"></div>`;
+  html += node('Soundscape', up ? `${s.engine} engine · float32 mix` : 'down', up);
+  html += `<div class="link${up ? ' on' : ''}" aria-hidden="true"></div>`;
+  const anyOn = up && s.speakers.some(sp => sp.connected && sp.sink && sp.mode !== 'headset');
+  html += `<div class="fan${anyOn ? ' on' : ''}">`;
+  if (!s.speakers.length) html += node('No speakers yet', 'add two or more below', false);
   s.speakers.forEach((sp, i) => {
-    const y = 40 + i * 46 + (h - 80 - (n - 1) * 46) / 2;
-    const on = up && sp.connected && sp.sink && sp.mode !== 'headset';
-    out += `<path d="M480 ${mid} C 560 ${mid}, 560 ${y}, 640 ${y}" fill="none" stroke="${on ? 'var(--acc)' : 'var(--line)'}" stroke-width="3"/>`;
-    const d = (sp.offset_ms || 0);
-    out += `<rect x="640" y="${y - 14}" width="96" height="28" rx="8" fill="var(--bg)" stroke="${d ? 'var(--acc2)' : 'var(--line)'}"/><text x="688" y="${y + 4}" text-anchor="middle" class="mono">+${d.toFixed(1)} ms</text>`;
-    out += `<line x1="736" y1="${y}" x2="790" y2="${y}" stroke="${on ? 'var(--acc)' : 'var(--line)'}" stroke-width="3"/>`;
-    out += node(790, y, 190, sp.name, `${sp.position}${sp.volume != null ? ' · ' + sp.volume + '%' : ''}${sp.connected ? '' : ' · offline'}${sp.mode === 'headset' ? ' · HEADSET MODE' : ''}`, on);
+    const on = up && sp.connected && !!sp.sink && sp.mode !== 'headset';
+    const d = sp.offset_ms || 0;
+    const sub = [sp.position, sp.volume != null ? sp.volume + '%' : null, sp.connected ? null : 'offline', sp.mode === 'headset' ? 'headset mode' : null].filter(Boolean).join(' · ');
+    html += `<div class="branch${on ? ' on' : ''}" style="--c:${seriesVar(i)}"><span class="trim${d ? ' set' : ''}">+${d.toFixed(1)} ms</span><span class="link${on ? ' on' : ''}" aria-hidden="true"></span>${node(sp.name, sub, on, sp.mode === 'headset' ? 'warn' : '')}</div>`;
   });
-  if (!s.speakers.length) out += `<text x="700" y="${mid}" text-anchor="middle" style="fill:var(--mut)">add speakers to see them here</text>`;
-  svg.innerHTML = out;
-  document.getElementById('pathNote').textContent = up ? (s.manual_delays === false ? 'no manual delays on this engine' : 'drift-corrected, latency-compensated, delays sample-accurate') : '';
+  html += '</div>';
+  box.innerHTML = html;
+  let note = up ? (s.manual_delays === false ? 'no manual delays on this engine' : 'drift-corrected, latency-compensated, sample-accurate delays') : '';
+  if (s.config && s.config.stereo_split) note = 'stereo split is on (left and right separated); turn it off with: soundscape config set stereo_split false';
+  $('pathNote').textContent = note;
 }
 function renderSettings(s) {
-  const c = s.config; const sel = document.getElementById('cfgEngine');
+  const c = s.config || {}; const sel = $('cfgEngine');
   const engines = s.engines || []; if (sel.options.length !== engines.length) sel.innerHTML = engines.map(e => `<option value="${e}">${e}</option>`).join('');
   if (document.activeElement !== sel) sel.value = c.engine;
-  document.getElementById('engineHint').textContent = (s.platform === 'mac' && s.engine === 'aggregate') ? '· aggregate: no sync trims; choose auto or relay and Rebuild' : '';
-  document.getElementById('cfgPin').checked = !!c.pin_microphone;
+  $('engineHint').textContent = (s.platform === 'mac' && s.engine === 'aggregate') ? 'aggregate cannot apply sync trims; choose auto or relay and Rebuild' : 'auto picks the best engine for this machine';
+  $('cfgPin').checked = !!c.pin_microphone;
   const mic = s.microphone || {};
-  document.getElementById('micNote').textContent = mic.pinned ? (mic.ok ? '· on ' + mic.pinned : '· NOT pinned right now') : '';
-  if (c.stereo_split) document.getElementById('pathNote').textContent = 'stereo split is ON (left/right channels separated); run: soundscape config set stereo_split false';
-  document.getElementById('cfgComp').checked = !!c.latency_compensate;
-  document.getElementById('cfgDefault').checked = !!c.set_default_sink;
+  $('micNote').textContent = mic.pinned ? (mic.ok ? 'pinned to ' + mic.pinned : 'not pinned right now') : 'stops speakers from dropping into headset mode';
+  $('cfgComp').checked = !!c.latency_compensate;
+  $('cfgDefault').checked = !!c.set_default_sink;
 }
 function renderSync(m) {
-  const box = document.getElementById('syncBars');
+  const box = $('syncBars');
   if (!m || !Array.isArray(m.speakers) || !m.speakers.length) return;
-  const max = Math.max(5, ...m.speakers.map(x => Math.abs(x.lag_ms)));
-  box.innerHTML = m.speakers.map(x => {
-    const pct = 50 + (x.lag_ms / max) * 45; const left = Math.min(50, pct), w = Math.abs(pct - 50);
-    return `<div class="bar"><span>${esc(x.name)}</span><div class="track"><b></b><i style="left:${left}%;width:${w}%"></i></div><span class="mono sub">${x.lag_ms >= 0 ? '+' : ''}${x.lag_ms.toFixed(1)} ms → trim ${x.offset_ms.toFixed(1)}</span></div>`;
-  }).join('') + `<div class="sub">measured ${new Date(m.at * 1000).toLocaleTimeString()} · confidence ${m.confidence >= 99 ? 'very high' : m.confidence.toFixed(1)} · spread ${m.spread_ms.toFixed(1)} ms (relative to ${esc(m.speakers[0].name)})</div>`;
-  document.getElementById('syncNote').textContent = m.spread_ms < 1 ? 'in sync' : 'trims applied';
+  const idx = {}; (status?.speakers || []).forEach((sp, i) => { idx[sp.address] = i; });
+  const lags = m.speakers.map(x => x.lag_ms), after = m.speakers.map(x => x.lag_ms + (x.applied_ms || 0));
+  const lo = Math.min(0, ...lags, ...after), hi = Math.max(5, ...lags, ...after);
+  const pad = (hi - lo) * 0.08 || 1, min = lo - pad, max = hi + pad;
+  const pos = v => ((v - min) / (max - min) * 100).toFixed(2) + '%';
+  const fmt = v => (v > 0 ? '+' : '') + v.toFixed(1);
+  let html = '<div class="axis">' + (lo < 0 ? `<span class="lo">${fmt(lo)} ms</span>` : '') + `<span style="left:${pos(0)}">0 ms</span><span class="hi">${fmt(hi)} ms</span></div>`;
+  html += m.speakers.map((x, i) => {
+    const c = seriesVar(idx[x.address] ?? i), a = x.lag_ms + (x.applied_ms || 0);
+    return `<div class="lane" style="--c:${c}"><div class="who"><span class="sdot" aria-hidden="true"></span><span>${esc(x.name)}</span></div>
+      <div class="track" role="img" aria-label="${esc(x.name)}: arrived ${fmt(x.lag_ms)} ms, trim ${x.offset_ms.toFixed(1)} ms"><span class="zero" style="left:${pos(0)}"></span><span class="span" style="left:${pos(Math.min(x.lag_ms, a))};width:calc(${pos(Math.max(x.lag_ms, a))} - ${pos(Math.min(x.lag_ms, a))})"></span><span class="mark" style="left:${pos(x.lag_ms)}"></span><span class="mark after" style="left:${pos(a)}"></span></div>
+      <span class="val">${fmt(x.lag_ms)} ms · trim ${x.offset_ms.toFixed(1)}</span></div>`;
+  }).join('');
+  html += `<div class="legend"><span><i></i>measured arrival</span><span><i class="after"></i>after trim</span><span>relative to ${esc(m.speakers[0].name)}</span></div>`;
+  html += `<div class="small">measured ${new Date(m.at * 1000).toLocaleTimeString()} · confidence ${m.confidence >= 99 ? 'very high' : m.confidence.toFixed(1)} · spread ${m.spread_ms.toFixed(1)} ms</div>`;
+  box.innerHTML = html;
+  $('syncNote').textContent = m.spread_ms < 1 ? 'in sync' : 'trims applied';
 }
 
 // ---------- controls
@@ -288,11 +554,11 @@ const quiet = () => {};
 function vol(t, v) { clearTimeout(vt[t]); vt[t] = setTimeout(() => api('/api/volume', {target: t, percent: +v}).then(refresh).catch(quiet), 150); }
 function off(t, d) { api('/api/offset', {target: t, delta_ms: d}).then(r => { toast('Delay set', Object.entries(r.offsets || {}).map(([k, v]) => `${k}: +${v.toFixed(1)} ms`).join('   '), false); refresh(); }).catch(quiet); }
 function mute(t) { api('/api/mute', {target: t, toggle: true}).then(r => { toast(r.muted ? 'Muted' : 'Unmuted', '', false); refresh(); }).catch(quiet); }
-function media(a) { api('/api/media', {action: a}).then(r => { if (r.message) toast('media', r.message, false); }).catch(quiet); }
+function media(a) { api('/api/media', {action: a}).then(r => { if (r.message) toast('Media', r.message, false); }).catch(quiet); }
 function cfg(k, v) { api('/api/config', {key: k, value: v}).then(r => { toast(k + ' saved', r.note || '', false); refresh(); }).catch(quiet); }
 async function removeSpeaker(addr, name) { if (!confirm(`Remove ${name} from Soundscape?`)) return; await api('/api/remove', {target: addr}).catch(quiet); refresh(); }
 async function calibrate() {
-  const source = document.getElementById('source').value;
+  const source = $('source').value;
   const j = await job('/api/sync', {source});
   if (j && j.state === 'done') renderSync(j.result);
 }
@@ -301,40 +567,41 @@ async function scan() {
   if (!j || j.state !== 'done') return;
   const known = new Set((status?.speakers || []).map(s => s.address));
   const list = (j.result || []).filter(d => !known.has(d.address));
-  const box = document.getElementById('found');
-  if (!list.length) { box.innerHTML = '<div class="empty">Nothing new found. Make sure the speaker is in pairing mode and not connected to a phone.</div>'; return; }
-  box.className = 'grid';
-  box.innerHTML = list.map(d => `<div class="card"><h3>${esc(d.name)}<span class="spacer"></span><span class="st ${d.connected ? 'ok' : d.paired ? 'warn' : ''}">${d.connected ? 'connected' : d.paired ? 'paired' : 'new'}</span></h3>
-    <div class="sub mono">${esc(d.address)}</div>
-    <div class="row" style="margin-top:8px"><input type="text" placeholder="position (left, right, kitchen...)" id="pos-${d.address.replace(/:/g,'')}" style="flex:1"><button class="pri sm" onclick="addSpeaker('${d.address}')">Add</button></div></div>`).join('');
+  const box = $('found');
+  if (!list.length) { box.className = 'empty'; box.innerHTML = 'Nothing new found. Make sure the speaker is in pairing mode and not connected to a phone.'; return; }
+  box.className = 'found';
+  box.innerHTML = list.map(d => `<div class="card"><div class="card-head"><h3 class="name">${esc(d.name)}</h3><span class="st ${d.connected ? 'ok' : d.paired ? 'warn' : ''}">${d.connected ? 'connected' : d.paired ? 'paired' : 'new'}</span></div>
+    <div class="sink">${esc(d.address)}${d.rssi != null ? ' · signal ' + d.rssi + ' dBm' : ''}</div>
+    <div class="row"><input type="text" placeholder="where it stands (kitchen, left…)" aria-label="Position name for ${esc(d.name)}" id="pos-${d.address.replace(/:/g, '')}"><button class="pri" data-add="${esc(d.address)}">Add</button></div></div>`).join('');
 }
+$('found').addEventListener('click', ev => { const b = ev.target.closest('button[data-add]'); if (b) addSpeaker(b.dataset.add); });
 async function addSpeaker(addr) {
-  const pos = document.getElementById('pos-' + addr.replace(/:/g, '')).value.trim();
+  const pos = $('pos-' + addr.replace(/:/g, '')).value.trim();
   const j = await job('/api/add', {address: addr, position: pos || null});
-  if (j && j.state === 'done') { document.getElementById('found').innerHTML = '<div class="empty">Added. Scan again to add another, or Bring up.</div>'; }
+  if (j && j.state === 'done') { const box = $('found'); box.className = 'empty'; box.innerHTML = 'Added. Scan again to add another, or press Bring up.'; }
 }
 async function doctor() {
-  const box = document.getElementById('checks'); box.innerHTML = '<div class="empty"><span class="spin"></span> running checks...</div>';
+  const box = $('checks'); box.innerHTML = '<div class="empty row"><span class="spin"></span> running checks…</div>';
   const checks = (await api('/api/doctor').catch(() => [])) || [];
-  const sym = {ok: '✓', warn: '!', fail: '✕'}, cls = {ok: 'ok', warn: 'warn', fail: 'bad'};
-  box.innerHTML = checks.map(c => `<div><span class="st ${cls[c.status]}" style="width:14px">${sym[c.status]}</span><span>${esc(c.title)}${c.detail ? ' <span class="sub">· ' + esc(c.detail) + '</span>' : ''}${c.fix && c.status !== 'ok' ? '<span class="fix">fix: ' + esc(c.fix) + '</span>' : ''}</span></div>`).join('');
+  if (!checks.length) { box.innerHTML = '<div class="empty">No results. Check the activity log for the error.</div>'; return; }
+  box.innerHTML = checks.map(c => `<div class="check ${esc(c.status)}">${ICON[c.status] || ICON.warn}<span>${esc(c.title)}${c.detail ? ' <span class="small">· ' + esc(c.detail) + '</span>' : ''}${c.fix && c.status !== 'ok' ? '<span class="fix">fix: ' + esc(c.fix) + '</span>' : ''}</span></div>`).join('');
 }
 async function refreshLog() {
   const lines = (await api('/api/log?n=60').catch(() => [])) || [];
-  const el = document.getElementById('log');
+  const el = $('log');
   el.textContent = lines.map(l => new Date(l.t * 1000).toLocaleTimeString() + '  ' + l.msg).join('\n') || 'no activity yet';
   el.scrollTop = el.scrollHeight;
 }
 async function quitApp() {
   if (!confirm('Quit Soundscape and restore your normal audio output?')) return;
   await api('/api/quit', {}).catch(quiet);
-  document.body.innerHTML = '<main><section class="panel"><h2>Soundscape stopped</h2><p>Your normal audio output is back. Launch the Soundscape app or run <b>soundscape start</b> to begin again.</p></section></main>';
+  document.body.innerHTML = '<main><section><div class="sec-head"><h2>Soundscape stopped</h2></div><p>Your normal audio output is back. Open the Soundscape app or run <code>soundscape start</code> to begin again.</p></section></main>';
 }
-async function resetTrims() { try { await api('/api/offset', {target: 'all', offset_ms: 0}); toast('Trims reset', '', false); document.getElementById('syncNote').textContent = 'trims reset'; } catch (e) {} refresh(); }
+async function resetTrims() { try { await api('/api/offset', {target: 'all', offset_ms: 0}); toast('Trims reset', '', false); $('syncNote').textContent = 'trims reset'; } catch (e) {} refresh(); }
 async function loadSources() {
   const r = await api('/api/sources').catch(() => ({sources: []}));
   const list = Array.isArray(r) ? r : (r.sources || []);
-  const sel = document.getElementById('source');
+  const sel = $('source');
   for (const s of list) {
     const o = document.createElement('option'); o.value = s.name;
     const bt = s.transport && s.transport.startsWith('bluetooth');
@@ -343,6 +610,23 @@ async function loadSources() {
     sel.appendChild(o);
   }
 }
+
+// ---------- wiring
+$('btnUp').addEventListener('click', () => job('/api/up', {}));
+$('btnDown').addEventListener('click', () => job('/api/down', {}));
+$('btnTest').addEventListener('click', () => job('/api/test', {}));
+$('btnQuit').addEventListener('click', quitApp);
+$('btnMuteAll').addEventListener('click', () => mute('all'));
+$('master').addEventListener('input', ev => { $('masterVal').textContent = ev.target.value + '%'; vol('all', ev.target.value); });
+$('btnCal').addEventListener('click', calibrate);
+$('btnReset').addEventListener('click', resetTrims);
+$('btnScan').addEventListener('click', scan);
+$('btnDoctor').addEventListener('click', doctor);
+$('cfgEngine').addEventListener('change', ev => cfg('engine', ev.target.value));
+$('cfgPin').addEventListener('change', ev => cfg('pin_microphone', ev.target.checked));
+$('cfgComp').addEventListener('change', ev => cfg('latency_compensate', ev.target.checked));
+$('cfgDefault').addEventListener('change', ev => cfg('set_default_sink', ev.target.checked));
+$('mediaRow').addEventListener('click', ev => { const b = ev.target.closest('button[data-media]'); if (b) media(b.dataset.media); });
 refresh(); refreshLog(); loadSources();
 setInterval(refresh, 2500); setInterval(refreshLog, 5000);
 </script>
