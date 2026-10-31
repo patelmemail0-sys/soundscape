@@ -75,3 +75,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 * The sweep along the signal path is the page's one authored motion: links, trunk and
   branches fill once when the output flips from down to up (480 ms, staggered), never on
   page load, and not at all under reduced motion.
+
+## Built surface
+
+Recorded from `soundscape/ui.html` and the captures under `.impeccable/review/` (desktop,
+mobile, tablet, light and dark, down, empty, headset-mode, focus, hover, toast and offline
+states), taken against the emulated Linux backend. Finish review: disposition **fix** with
+eight material fixes, then three verdict passes; final disposition **ship**, earned on the
+scored set (the eight fixes and the regressions they introduced), not a fresh review of the
+whole surface. The launcher binary could not run here, so `impeccable detect` and the
+concept roll did not run; the reviewer's floor check was the only slop gate.
