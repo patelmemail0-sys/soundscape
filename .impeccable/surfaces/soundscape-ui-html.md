@@ -60,3 +60,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   the API today).
 * Media keys are Linux-only (`playerctl`); the row is hidden on macOS rather than
   reworked.
+
+## Adaptations (recorded after the finish review)
+
+* Lower grid: Add a speaker and Doctor sit in the left column under the speaker cards; Sync
+  and Settings in the right column. Reason: with two speakers the contract's arrangement left
+  about 640 px of empty ground under the cards at 1280 px; the finish reviewer offered this
+  balance as an acceptable alternative.
+* Two shades of the one cobalt: lines, focus, selection and the live chip use
+  `oklch(62% 0.17 255)`; filled primary buttons and switches use `oklch(52% 0.19 258)` so
+  white text on them keeps 4.5:1. Same hue, one accent.
+* The header mark is the flat-fill rendition of `assets/soundscape.svg` (same geometry, the
+  gradients dropped) so it stays crisp at 26 px.
+* The sweep along the signal path is the page's one authored motion: links, trunk and
+  branches fill once when the output flips from down to up (480 ms, staggered), never on
+  page load, and not at all under reduced motion.
