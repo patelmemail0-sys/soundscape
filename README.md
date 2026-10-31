@@ -134,8 +134,11 @@ soundscape start
 ```
 
 On a Mac the installer also puts **Soundscape.app** in your Applications folder, so you can
-launch all of that from Launchpad or Spotlight; the dashboard's Quit button shuts it down and
-restores your normal output. Other commands when you want them:
+launch all of that from Launchpad or Spotlight. The app starts Soundscape as a background
+service and opens the dashboard within a second or two; the speakers connect while you watch
+the progress toast. Opening the app again just reopens the dashboard. The dashboard's Quit
+button shuts everything down and restores your normal output. Its log is
+`~/Library/Logs/Soundscape.log`. Other commands when you want them:
 
 ```bash
 soundscape up                 # join the speakers without the dashboard

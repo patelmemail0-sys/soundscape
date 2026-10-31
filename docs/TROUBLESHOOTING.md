@@ -162,6 +162,18 @@ both speakers equally). Closing CPU-heavy apps helps too.
 AirPlay Receiver needs both devices on the same Wi-Fi and the Mac awake. Disable "Put hard
 disks to sleep" and screen lock while playing, or keep the Mac on power.
 
+## The Soundscape app (macOS)
+
+**Nothing happens, or the app shows "not responding"**
+Update: versions before 0.5.1 ran the service inside the app process, which macOS reports as
+not responding because it has no window. Now the app starts a background service and quits
+at once. If the dashboard still does not open, read `~/Library/Logs/Soundscape.log`; the
+same thing from a terminal is `soundscape start --detach`.
+
+**How do I stop it?**
+Click Quit in the dashboard (top right), or run `soundscape down` and
+`pkill -f "soundscape start"`.
+
 ## Daemon / systemd / launchd
 
 ```bash

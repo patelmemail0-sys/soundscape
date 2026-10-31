@@ -128,7 +128,7 @@ svg text{fill:var(--fg);font-size:12px}
 
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
-const PAGE_VERSION = '0.5.0', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.5.1', SERVER_VERSION = '__SERVER_VERSION__';
 let status = null, jobId = null, busyPath = false;
 if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) document.getElementById('stale').style.display = 'block';
 window.addEventListener('error', e => toast('Page error', e.message, false));

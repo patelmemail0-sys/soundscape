@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 - 2026-10-31
+
+* The Soundscape app no longer hangs as "not responding": it runs `soundscape start --detach`,
+  which starts the service in the background (new session, log in ~/Library/Logs) and returns
+  once the dashboard answers; opening the app again just reopens the dashboard.
+* `soundscape start` serves the dashboard immediately and brings the speakers up as the first
+  background job, so the page opens within a second and shows connection progress.
+
 ## 0.5.0 - 2026-10-31
 
 One-click everyday use.

@@ -429,11 +429,14 @@ def make_handler(app: RemoteApp):
 
 def serve(session: Session, host: str = "127.0.0.1", port: int = 8787, log: Log = print,
           token: Optional[str] = None, open_browser: bool = False, watchdog_s: Optional[float] = None,
-          quit_allowed: bool = False) -> None:
+          quit_allowed: bool = False, startup_up: bool = False) -> None:
     app = RemoteApp(session, log, token=token)
     httpd = ThreadingHTTPServer((host, port), make_handler(app))
     if quit_allowed:
         app.on_quit = lambda: threading.Thread(target=httpd.shutdown, daemon=True).start()
+    if startup_up and len(session.config.speakers) >= 2:
+        # bring the speakers up as the first background job: the page opens at once and shows progress
+        app._run_job("Bringing speakers up", lambda: session.up().engine)
     stop = threading.Event()
     if watchdog_s:
         def watchdog() -> None:

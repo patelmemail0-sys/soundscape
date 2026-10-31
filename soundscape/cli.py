@@ -247,21 +247,81 @@ def cmd_play(session: Session, args: argparse.Namespace) -> int:
                 loop=args.loop, shuffle=args.shuffle, volume=args.volume)
 
 
+def _server_alive(host: str, port: int, token: Optional[str]) -> bool:
+    import urllib.error
+    import urllib.request
+    probe_host = "127.0.0.1" if host in ("0.0.0.0", "") else host
+    req = urllib.request.Request(f"http://{probe_host}:{port}/api/status",
+                                 headers={"X-Soundscape-Token": token or ""})
+    try:
+        with urllib.request.urlopen(req, timeout=1.0) as resp:
+            return resp.status == 200
+    except urllib.error.HTTPError as exc:
+        return exc.code == 401  # a Soundscape server with a different token is still a server
+    except Exception:
+        return False
+
+
+def _dashboard_url(host: str, port: int, token: Optional[str]) -> str:
+    shown = "127.0.0.1" if host in ("0.0.0.0", "") else host
+    return f"http://{shown}:{port}/" + (f"?token={token}" if token else "")
+
+
+def start_log_path(session: Session) -> Path:
+    if session.platform == "mac":
+        folder = Path.home() / "Library" / "Logs"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / "Soundscape.log"
+    return session.paths.state_dir / "start.log"
+
+
+def launch_detached(session: Session, args: argparse.Namespace) -> int:
+    """Used by the Soundscape app: return at once, leave a background process running."""
+    import subprocess
+    import webbrowser
+    url = _dashboard_url(args.host, args.port, args.token)
+    if _server_alive(args.host, args.port, args.token):
+        say(f"Soundscape is already running; opening {url}")
+        if not args.no_open:
+            webbrowser.open(url)
+        return 0
+    log_path = start_log_path(session)
+    argv = [sys.executable, "-m", "soundscape"]
+    if args.root:
+        argv += ["--root", args.root]
+    if args.adapter:
+        argv += ["--adapter", args.adapter]
+    argv += ["start", "--no-open", "--host", args.host, "--port", str(args.port), "--interval", str(args.interval)]
+    if args.token:
+        argv += ["--token", args.token]
+    if args.keep:
+        argv.append("--keep")
+    with open(log_path, "ab") as log:
+        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        if _server_alive(args.host, args.port, args.token):
+            say(f"Soundscape is running in the background; dashboard at {url} (log: {log_path})")
+            if not args.no_open:
+                webbrowser.open(url)
+            return 0
+        time.sleep(0.3)
+    err(f"Soundscape did not start within 15 s; see {log_path}")
+    return 1
+
+
 def cmd_start(session: Session, args: argparse.Namespace) -> int:
-    """One command for everyday use: join the speakers, open the dashboard, keep it all running."""
+    """One command for everyday use: open the dashboard at once, join the speakers in the
+    background, keep everything running. ``--detach`` returns immediately (used by the app)."""
+    if args.detach:
+        return launch_detached(session, args)
     from .remote import serve
     say("Soundscape starting ...")
     if len(session.config.speakers) < 2:
         say("no speakers configured yet: the dashboard will open so you can scan and add them")
-    else:
-        try:
-            session.up()
-        except SoundscapeError as exc:
-            err(f"not up yet: {exc.message}" + (f"\n  hint: {exc.hint}" if exc.hint else ""))
-            say("will keep retrying in the background")
     try:
         serve(session, host=args.host, port=args.port, log=say, token=args.token,
-              open_browser=not args.no_open, watchdog_s=args.interval, quit_allowed=True)
+              open_browser=not args.no_open, watchdog_s=args.interval, quit_allowed=True, startup_up=True)
     finally:
         if args.keep:
             say("Soundscape stopped; the virtual output stays in place")
@@ -547,6 +607,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-open", action="store_true", help="do not open a browser")
     s.add_argument("--interval", type=float, default=10.0, help="seconds between health checks")
     s.add_argument("--keep", action="store_true", help="leave the output in place on quit")
+    s.add_argument("--detach", action="store_true", help="run in the background and return at once (the app uses this)")
 
     for name, help_text in (("ui", "open the web dashboard: visualize and control everything"),
                             ("remote", "same dashboard, for your phone (does not open a browser)")):

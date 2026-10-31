@@ -71,13 +71,13 @@ if (( APP )) && [[ -x "$SOUNDSCAPE_BIN" ]]; then
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cat > "$app/Contents/MacOS/Soundscape" <<LAUNCH
 #!/bin/bash
-# Soundscape launcher: if it is already running just open the dashboard, otherwise start it.
+# Soundscape launcher: starts the background service (or just reopens the dashboard) and exits.
 export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
-if curl -s -m 1 http://127.0.0.1:8787/api/status >/dev/null 2>&1; then
-  open "http://127.0.0.1:8787/"
-  exit 0
+"$SOUNDSCAPE_BIN" start --detach >> "\$HOME/Library/Logs/Soundscape.log" 2>&1
+if [ \$? -ne 0 ]; then
+  osascript -e 'display alert "Soundscape could not start" message "See ~/Library/Logs/Soundscape.log for details."' >/dev/null 2>&1
 fi
-exec "$SOUNDSCAPE_BIN" start >> /tmp/soundscape.log 2>&1
+exit 0
 LAUNCH
     chmod +x "$app/Contents/MacOS/Soundscape"
     cat > "$app/Contents/Info.plist" <<'PLIST'
@@ -94,7 +94,8 @@ LAUNCH
   <key>LSMinimumSystemVersion</key><string>12.0</string>
 </dict></plist>
 PLIST
-    echo "installed $app  (open it from Launchpad or Spotlight: it joins the speakers and opens the dashboard; log: /tmp/soundscape.log)"
+    mkdir -p "$HOME/Library/Logs"
+    echo "installed $app  (open it from Launchpad or Spotlight: it starts Soundscape in the background and opens the dashboard; log: ~/Library/Logs/Soundscape.log)"
   else
     mkdir -p "$HOME/.local/share/applications"
     cat > "$HOME/.local/share/applications/soundscape.desktop" <<DESKTOP
@@ -102,7 +103,7 @@ PLIST
 Type=Application
 Name=Soundscape
 Comment=Play through all your Bluetooth speakers at once
-Exec=$SOUNDSCAPE_BIN start
+Exec=$SOUNDSCAPE_BIN start --detach
 Terminal=false
 Categories=AudioVideo;Audio;
 DESKTOP

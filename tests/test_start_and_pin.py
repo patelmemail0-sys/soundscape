@@ -6,6 +6,8 @@ import struct
 import sys
 from pathlib import Path
 
+import pytest
+
 from soundscape import cli
 from soundscape.config import Config
 from soundscape.mac import coreaudio as ca
@@ -107,11 +109,15 @@ def test_start_brings_up_serves_and_takes_down(runner, world, tmp_path, monkeypa
 
     def fake_serve(session, **kw):
         served.update(kw)
-        assert session.state() is not None  # up before the dashboard opens
+        assert session.state() is None  # the dashboard comes first ...
+        if kw["startup_up"]:
+            session.up()  # ... and `up` runs as the first background job
+        assert session.state() is not None
 
     monkeypatch.setattr("soundscape.remote.serve", fake_serve)
     assert cli.main(["--root", str(root), "start", "--no-open"], runner=runner) == 0
     assert served["watchdog_s"] == 10.0 and served["quit_allowed"] is True and served["open_browser"] is False
+    assert served["startup_up"] is True
     assert "soundscape" not in world.sinks  # taken down after serve returned
     assert "normal audio output is back" in capsys.readouterr().out
 
@@ -146,3 +152,67 @@ def test_install_script_mentions_app_and_start():
     text = Path("install.sh").read_text()
     assert "Soundscape.app" in text and "soundscape start" in text and "LSUIElement" in text
     assert struct  # noqa: keeps the import list honest
+
+
+# -- detached start (what the Soundscape app runs) ---------------------------------------
+
+def test_server_alive_is_false_on_a_closed_port():
+    import socket
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    assert cli._server_alive("127.0.0.1", port, None) is False
+    assert cli._dashboard_url("0.0.0.0", 8787, "t") == "http://127.0.0.1:8787/?token=t"
+
+
+def test_launch_detached_spawns_background_process_and_opens_browser(runner, world, tmp_path, monkeypatch, capsys):
+    spawned = {}
+    opened = []
+
+    class FakePopen:
+        def __init__(self, argv, **kw):
+            spawned["argv"] = argv
+            spawned["kw"] = kw
+
+    alive = iter([False, False, True])
+    monkeypatch.setattr(cli, "_server_alive", lambda host, port, token: next(alive, True))
+    monkeypatch.setattr("subprocess.Popen", FakePopen)
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url))
+    monkeypatch.setattr(cli.time, "sleep", lambda _s: None)
+    assert cli.main(["--root", str(tmp_path), "start", "--detach", "--port", "8790", "--token", "abc"], runner=runner) == 0
+    argv = spawned["argv"]
+    assert argv[1:3] == ["-m", "soundscape"] and "start" in argv and "--no-open" in argv
+    assert argv[argv.index("--root") + 1] == str(tmp_path) and argv[argv.index("--token") + 1] == "abc"
+    assert spawned["kw"]["start_new_session"] is True
+    assert opened == ["http://127.0.0.1:8790/?token=abc"]
+    assert "running in the background" in capsys.readouterr().out
+
+
+def test_launch_detached_when_already_running_only_opens_browser(runner, world, tmp_path, monkeypatch, capsys):
+    opened = []
+    monkeypatch.setattr(cli, "_server_alive", lambda host, port, token: True)
+    monkeypatch.setattr("subprocess.Popen", lambda *a, **k: pytest.fail("must not spawn a second server"))
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url))
+    assert cli.main(["--root", str(tmp_path), "start", "--detach"], runner=runner) == 0
+    assert opened == ["http://127.0.0.1:8787/"] and "already running" in capsys.readouterr().out
+
+
+def test_launch_detached_reports_failure(runner, world, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_server_alive", lambda host, port, token: False)
+    monkeypatch.setattr("subprocess.Popen", lambda *a, **k: None)
+    monkeypatch.setattr(cli.time, "sleep", lambda _s: None)
+    clock = iter([0.0, 0.0, 100.0, 100.0, 100.0])
+    monkeypatch.setattr(cli.time, "monotonic", lambda: next(clock, 100.0))
+    assert cli.main(["--root", str(tmp_path), "start", "--detach", "--no-open"], runner=runner) == 1
+    assert "did not start" in capsys.readouterr().err
+
+
+def test_start_log_path(runner, world, tmp_path, monkeypatch):
+    from soundscape.paths import Paths
+    from soundscape.session import Session
+    s = Session(runner=runner, paths=Paths.under(tmp_path), config=Config(), sleep=lambda _s: None)
+    assert cli.start_log_path(s) == tmp_path / "state" / "start.log"
+    monkeypatch.setattr(s, "platform", "mac")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    assert cli.start_log_path(s) == tmp_path / "Library" / "Logs" / "Soundscape.log"
