@@ -235,14 +235,90 @@ def test_remote_info_lists_phone_addresses(session, world, monkeypatch):
     monkeypatch.setattr(remote_mod, "host_name", lambda: "yogis-mac.local")
     app = app_for(session, token="abc")
     info = app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]
-    assert info == {"enabled": False, "lan": False, "port": None, "token_set": True, "urls": [], "qr": None}
+    assert {k: info[k] for k in ("enabled", "lan", "port", "token_set", "urls", "qr")} == {"enabled": False, "lan": False, "port": None, "token_set": True, "urls": [], "qr": None}
     app.bind = ("0.0.0.0", 8787)
     session.config.remote = True
     info = app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]
     assert info["enabled"] and info["lan"] and info["port"] == 8787 and info["token_set"]
-    assert info["urls"] == ["http://yogis-mac.local:8787/?token=abc", "http://192.168.1.5:8787/?token=abc"]
-    assert info["qr"] == "http://192.168.1.5:8787/?token=abc"
+    code = info["pairing"]["code"]  # phone-remote mode: the address carries the single-use code, never the master token
+    assert info["urls"] == [f"http://yogis-mac.local:8787/?pair={code}", f"http://192.168.1.5:8787/?pair={code}"]
+    assert info["qr"] == f"http://192.168.1.5:8787/?pair={code}"
+    session.config.remote = False  # manual --token mode: the plain address with the token
+    assert app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "abc"})[1]["remote"]["urls"][1] == "http://192.168.1.5:8787/?token=abc"
     app.token = None
     assert app.handle("GET", "/api/status", None)[1]["remote"]["urls"][1] == "http://192.168.1.5:8787/"
+    session.config.remote = True
     assert app.handle("POST", "/api/config", {"key": "remote", "value": False})[1]["value"] is False
     assert session.config.remote is False
+
+
+def test_pairing_one_phone_at_a_time(session, world, monkeypatch):
+    from soundscape import remote as remote_mod
+    monkeypatch.setattr(remote_mod, "lan_addresses", lambda: ["192.168.1.5"])
+    monkeypatch.setattr(remote_mod, "host_name", lambda: "mac.local")
+    session.config.remote = True
+    now = [1000.0]
+    app = RemoteApp(session, log=lambda _m: None, synchronous_jobs=True, token="master", clock=lambda: now[0])
+    app.bind = ("0.0.0.0", 8787)
+    owner = {"X-Soundscape-Token": "master"}
+    # the page itself is public so a phone can load it; every API call is checked
+    assert app.handle("GET", "/", None, None, "192.168.1.20")[0] == 200
+    status, body, _ = app.handle("GET", "/api/status", None, None, "192.168.1.20")
+    assert status == 401 and "not paired" in body["error"]
+    assert app.handle("GET", "/api/status", None, owner, "192.168.1.20")[0] == 401  # the master token is not a phone's key
+    st = app.handle("GET", "/api/status", None, owner)[1]
+    code = st["remote"]["pairing"]["code"]
+    assert st["access"] == "owner" and len(code) == 6 and st["remote"]["qr"] == f"http://192.168.1.5:8787/?pair={code}"
+    assert app.handle("POST", "/api/pair", {"code": "NOPE22", "device_id": "phone-a", "label": "iPhone"}, None, "192.168.1.20")[0] == 400
+    status, body, _ = app.handle("POST", "/api/pair", {"code": code.lower(), "device_id": "phone-a", "label": "iPhone"}, None, "192.168.1.20")
+    assert status == 200
+    a = {"X-Soundscape-Device": "phone-a", "X-Soundscape-Token": body["token"]}
+    st = app.handle("GET", "/api/status", None, a, "192.168.1.20")[1]
+    assert st["access"] == "control" and "pairing" not in st["remote"] and st["remote"]["devices"] == []
+    assert app.handle("POST", "/api/offset", {"target": "left", "delta_ms": 1}, a, "192.168.1.20")[0] == 200
+    assert app.handle("GET", "/api/pairing", None, a, "192.168.1.20")[0] == 403
+    # the code was consumed: the owner sees a new one and the old one no longer pairs
+    code2 = app.handle("GET", "/api/status", None, owner)[1]["remote"]["pairing"]["code"]
+    assert code2 != code
+    assert app.handle("POST", "/api/pair", {"code": code, "device_id": "phone-b", "label": "Android"}, None, "192.168.1.21")[0] == 400
+    body = app.handle("POST", "/api/pair", {"code": code2, "device_id": "phone-b", "label": "Android"}, None, "192.168.1.21")[1]
+    b = {"X-Soundscape-Device": "phone-b", "X-Soundscape-Token": body["token"]}
+    # phone A is active, so phone B may look but not touch
+    st = app.handle("GET", "/api/status", None, b, "192.168.1.21")[1]
+    assert st["access"] == "view" and st["controller"]["label"] == "iPhone"
+    status, body, _ = app.handle("POST", "/api/offset", {"target": "left", "delta_ms": 1}, b, "192.168.1.21")
+    assert status == 423 and body["controller"]["id"] == "phone-a"
+    assert app.handle("POST", "/api/takeover", {}, b, "192.168.1.21")[0] == 200
+    assert app.handle("GET", "/api/status", None, b, "192.168.1.21")[1]["access"] == "control"
+    assert app.handle("POST", "/api/offset", {"target": "left", "delta_ms": 1}, a, "192.168.1.20")[0] == 423
+    devices = app.handle("GET", "/api/status", None, owner)[1]["remote"]["devices"]
+    assert [(d["id"], d["in_control"]) for d in devices] == [("phone-a", False), ("phone-b", True)]
+    # B goes quiet; after the idle timeout A gets control back by itself
+    now[0] += 30
+    assert app.handle("GET", "/api/status", None, a, "192.168.1.20")[1]["access"] == "control"
+    assert app.handle("GET", "/api/status", None, b, "192.168.1.21")[1]["access"] == "view"
+    # paired phones survive a restart; only the owner can forget one
+    app2 = RemoteApp(session, log=lambda _m: None, synchronous_jobs=True, token="master", clock=lambda: now[0])
+    app2.bind = ("0.0.0.0", 8787)
+    assert app2.handle("GET", "/api/status", None, a, "192.168.1.20")[1]["access"] == "control"
+    assert app2.handle("POST", "/api/forget", {"device_id": "phone-a"}, a, "192.168.1.20")[0] == 403
+    assert app2.handle("POST", "/api/forget", {"device_id": "phone-a"}, owner)[1]["ok"] is True
+    assert app2.handle("GET", "/api/status", None, a, "192.168.1.20")[0] == 401
+    assert app2.handle("GET", "/api/status", None, b, "192.168.1.21")[1]["access"] == "control"
+    # ten wrong guesses rotate the code
+    code3 = app2.handle("GET", "/api/status", None, owner)[1]["remote"]["pairing"]["code"]
+    for _ in range(10):
+        app2.handle("POST", "/api/pair", {"code": "WRONG2", "device_id": "x", "label": "x"}, None, "192.168.1.30")
+    assert app2.handle("GET", "/api/status", None, owner)[1]["remote"]["pairing"]["code"] != code3
+    # an expired code is refused too
+    code4 = app2.handle("GET", "/api/status", None, owner)[1]["remote"]["pairing"]["code"]
+    now[0] += 700
+    assert app2.handle("POST", "/api/pair", {"code": code4, "device_id": "phone-c", "label": "iPad"}, None, "192.168.1.22")[0] == 400
+
+
+def test_manual_token_mode_still_admits_the_network(session, world):
+    session.config.remote = False
+    app = app_for(session, token="s3cret")
+    assert app.handle("GET", "/api/status", None, {"X-Soundscape-Token": "s3cret"}, "192.168.1.9")[1]["access"] == "owner"
+    assert app.handle("GET", "/api/status", None, None, "192.168.1.9")[0] == 401
+    assert app.handle("GET", "/api/status", None, None, "127.0.0.1")[0] == 401

@@ -271,12 +271,19 @@ they work.
 ### Phone remote
 
 Turn on **Phone remote** in the dashboard (or `soundscape config set remote true`), then
-quit and open Soundscape again. The dashboard now listens on your Wi-Fi with a token in the
-address and shows that address and a QR code: point the phone's camera at it, or type the
-address into the phone's browser, and the whole dashboard is in your hand: volumes, mute,
-trims, calibration, and play/pause/skip for Music or Spotify on the Mac. The token keeps
-everyone else on the network out. The first time, macOS asks whether Python may accept
-incoming connections: click Allow.
+quit and open Soundscape again. The dashboard now listens on your Wi-Fi and shows a QR code
+that carries a single-use pairing code: point the phone's camera at it (or type the address
+and code shown next to it) and the whole dashboard is in your hand: volumes, mute, trims,
+calibration, and play/pause/skip for Music or Spotify on the Mac.
+
+* **One phone at a time.** A phone that opens the page while another phone is active sees
+  "Another phone is in control" with a Take over button; control also frees up by itself
+  about 20 seconds after the active phone closes the page or leaves the Wi-Fi.
+* **Known phones reconnect by themselves.** Each paired phone keeps its own key, so it
+  comes straight back the next time it opens the page on this Wi-Fi, no scan needed. The
+  code on the Mac's screen changes after every phone that connects, and a phone can be
+  forgotten from the list on the Mac's dashboard.
+* The first time, macOS asks whether Python may accept incoming connections: click Allow.
 
 By hand instead:
 
@@ -284,10 +291,11 @@ By hand instead:
 soundscape ui --host 0.0.0.0 --port 8787 --token mysecret
 ```
 
-and open `http://<this-machine>:8787/?token=mysecret`. Without `--token` anyone on the
-network could change volumes, so the default bind is `127.0.0.1`. `soundscape remote` is
-the same server without opening a browser. Music playing *from* the phone (AirPlay) is
-controlled on the phone itself.
+and open `http://<this-machine>:8787/?token=mysecret` (with the Phone remote setting off,
+anyone with the token may connect; with it on, the network side always pairs). Without
+`--token` anyone on the network could change volumes, so the default bind is `127.0.0.1`.
+`soundscape remote` is the same server without opening a browser. Music playing *from* the
+phone (AirPlay) is controlled on the phone itself.
 
 ## Keep it running
 

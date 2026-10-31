@@ -1,3 +1,3 @@
 """Soundscape: one audio source, two Bluetooth speakers, in sync."""
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"

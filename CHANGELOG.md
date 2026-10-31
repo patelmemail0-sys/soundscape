@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0 - 2026-10-31
+
+* Phone pairing, one phone at a time. The QR code now carries a single-use pairing code;
+  a phone that opens it gets a key of its own (kept in `remotes.json`) and reconnects by
+  itself on the same Wi-Fi, no scan needed. Exactly one paired phone controls at a time:
+  another one sees "Another phone is in control" with a Take over button, and control frees
+  up by itself about 20 s after the active phone leaves. The code changes after each phone
+  connects (and after ten wrong guesses); the Mac's dashboard lists known phones and can
+  forget them. The master token is only accepted from the Mac itself while the phone
+  remote is on; with it off, `--host/--token` behave as before.
+
 ## 0.7.0 - 2026-10-31
 
 * Phone remote. A switch in the dashboard (`remote` setting) makes Soundscape listen on the

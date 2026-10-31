@@ -12,8 +12,11 @@ page adds itself); without it, only expose the UI on a network you trust.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import ipaddress
 import json
+import secrets
 import socket
 import threading
 import time
@@ -59,6 +62,136 @@ def host_name() -> str:
     """The Bonjour name phones can resolve on the same network (``name.local``)."""
     name = socket.gethostname().split(".")[0]
     return f"{name}.local" if name else ""
+
+
+def is_local_client(client: Optional[str]) -> bool:
+    """True for requests from this machine (the owner's browser); None means no socket at all."""
+    if not client:
+        return True
+    try:
+        return ipaddress.ip_address(client.split("%")[0]).is_loopback
+    except ValueError:
+        return client == "localhost"
+
+
+# -- paired phones -----------------------------------------------------------------
+
+PAIR_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I: the code is sometimes typed
+PAIR_CODE_TTL_S = 600.0
+PAIR_MAX_FAILURES = 10
+CONTROL_STALE_S = 20.0  # a phone that has not polled for this long has left; the next one may take control
+
+
+class Remotes:
+    """Phones allowed to use the dashboard, and which one is in control right now.
+
+    A phone pairs once by opening the single-use code from the QR on the owner's dashboard; it
+    then holds a device token of its own, remembered in ``remotes.json`` so it reconnects by
+    itself as long as it can reach the Mac. Exactly one paired phone controls at a time: the
+    slot frees when that phone stops polling, or another paired phone takes it over.
+    """
+
+    def __init__(self, path: Path, clock: Callable[[], float] = time.time):
+        self.path = path
+        self.clock = clock
+        self.devices: Dict[str, Dict[str, Any]] = {}
+        self.controller: Optional[str] = None
+        self.controller_seen = 0.0
+        self.code: Optional[str] = None
+        self.code_expires = 0.0
+        self.failures = 0
+        self._dirty_at = 0.0
+        self.load()
+
+    # persistence
+    def load(self) -> None:
+        try:
+            data = json.loads(self.path.read_text())
+            if isinstance(data, dict) and isinstance(data.get("devices"), dict):
+                self.devices = data["devices"]
+        except (OSError, ValueError):
+            self.devices = {}
+
+    def save(self) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"devices": self.devices}, indent=2) + "\n")
+            tmp.replace(self.path)
+        except OSError:
+            pass
+        self._dirty_at = 0.0
+
+    # pairing
+    def pairing_code(self) -> str:
+        """The code shown to the owner; a fresh one once it was used, expired, or guessed at too often."""
+        if self.code is None or self.clock() > self.code_expires:
+            self.code = "".join(secrets.choice(PAIR_ALPHABET) for _ in range(6))
+            self.code_expires = self.clock() + PAIR_CODE_TTL_S
+            self.failures = 0
+        return self.code
+
+    def pair(self, code: str, device_id: str, label: str, ip: str) -> Optional[str]:
+        """Exchange the current code for a device token; None when the code is wrong or stale."""
+        offered = (code or "").strip().upper().replace("O", "0").replace("I", "1")
+        current = self.code if self.code and self.clock() <= self.code_expires else None
+        if not device_id or current is None or not hmac.compare_digest(offered, current.replace("O", "0").replace("I", "1")):
+            self.failures += 1
+            if self.failures >= PAIR_MAX_FAILURES:
+                self.code = None  # too many guesses: the owner gets a new code
+            return None
+        token = secrets.token_urlsafe(24)
+        now = self.clock()
+        self.devices[device_id] = {"token_hash": hashlib.sha256(token.encode()).hexdigest(),
+                                   "label": (label or "phone")[:60], "first_seen": now, "last_seen": now, "last_ip": ip}
+        self.code = None  # single use
+        self.save()
+        return token
+
+    def check(self, device_id: str, token: str) -> bool:
+        dev = self.devices.get(device_id)
+        return bool(dev and token and hmac.compare_digest(dev["token_hash"], hashlib.sha256(token.encode()).hexdigest()))
+
+    # the one controller
+    def access(self, device_id: str, ip: str) -> str:
+        """'control' when this phone holds (or may take) the slot, 'view' while another phone is active."""
+        now = self.clock()
+        dev = self.devices[device_id]
+        dev["last_seen"], dev["last_ip"] = now, ip
+        if self._dirty_at == 0.0:
+            self._dirty_at = now
+        elif now - self._dirty_at > 60:
+            self.save()
+        free = self.controller is None or self.controller not in self.devices or now - self.controller_seen > CONTROL_STALE_S
+        if self.controller == device_id or free:
+            self.controller, self.controller_seen = device_id, now
+            return "control"
+        return "view"
+
+    def takeover(self, device_id: str) -> None:
+        self.controller, self.controller_seen = device_id, self.clock()
+
+    def forget(self, device_id: str) -> bool:
+        if device_id not in self.devices:
+            return False
+        del self.devices[device_id]
+        if self.controller == device_id:
+            self.controller = None
+        self.save()
+        return True
+
+    def controller_info(self) -> Optional[Dict[str, Any]]:
+        if self.controller is None or self.controller not in self.devices:
+            return None
+        if self.clock() - self.controller_seen > CONTROL_STALE_S:
+            return None
+        dev = self.devices[self.controller]
+        return {"id": self.controller, "label": dev["label"], "seen_s": round(self.clock() - self.controller_seen, 1), "ip": dev.get("last_ip")}
+
+    def describe(self) -> List[Dict[str, Any]]:
+        ctl = self.controller_info()
+        return [{"id": did, "label": d["label"], "last_ip": d.get("last_ip"), "seen_s": round(self.clock() - d["last_seen"], 1),
+                 "in_control": bool(ctl and ctl["id"] == did)} for did, d in self.devices.items()]
 
 
 def load_page() -> str:
@@ -162,8 +295,9 @@ class RemoteApp:
     """HTTP-agnostic request handling, so it can be unit tested without sockets."""
 
     def __init__(self, session: Session, log: Log = print, token: Optional[str] = None,
-                 synchronous_jobs: bool = False):
+                 synchronous_jobs: bool = False, clock: Callable[[], float] = time.time):
         self.session = session
+        self.remotes = Remotes(session.paths.config_dir / "remotes.json", clock)
         self.log_out = log
         self.token = token or None
         self._lock = threading.Lock()
@@ -225,28 +359,69 @@ class RemoteApp:
 
     # -- auth ------------------------------------------------------------------------
     def authorized(self, path: str, headers: Optional[Dict[str, str]]) -> bool:
+        """Owner check with the master token (requests from this machine)."""
         if not self.token:
             return True
         supplied = (headers or {}).get("X-Soundscape-Token") or (parse_qs(urlparse(path).query).get("token") or [""])[0]
         return hmac.compare_digest(supplied, self.token)
 
+    OWNER_ONLY = ("/api/pairing", "/api/forget")
+
+    def access(self, path: str, headers: Optional[Dict[str, str]], client: Optional[str]) -> Tuple[str, Optional[str]]:
+        """Who is asking: ('owner', None) from this machine with the master token; a paired phone is
+        ('control', id) or ('view', id) while another phone is active; ('none', None) otherwise.
+        With the phone remote off, the master token also works from the network (manual --token use)."""
+        headers = headers or {}
+        if is_local_client(client) or not self.session.config.remote:
+            return ("owner", None) if self.authorized(path, headers) else ("none", None)
+        device = headers.get("X-Soundscape-Device") or ""
+        token = headers.get("X-Soundscape-Token") or ""
+        if device and self.remotes.check(device, token):
+            return self.remotes.access(device, client or ""), device
+        return "none", None
+
     # -- routing -----------------------------------------------------------------------
     def handle(self, method: str, path: str, body: Optional[Dict[str, Any]],
-               headers: Optional[Dict[str, str]] = None) -> Tuple[int, Any, str]:
-        """Return (status, payload, content_type)."""
+               headers: Optional[Dict[str, str]] = None, client: Optional[str] = None) -> Tuple[int, Any, str]:
+        """Return (status, payload, content_type). ``client`` is the requester's IP (None: this machine)."""
         parsed = urlparse(path)
         route = parsed.path.rstrip("/") or "/"
         query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
-        if not self.authorized(path, headers):
-            return 401, {"error": "token required", "hint": "open the UI with ?token=... as printed when it started"}, "application/json"
+        json_t = "application/json"
+        if method == "GET" and route == "/":
+            return 200, load_page(), "text/html; charset=utf-8"  # the page is public; every API call is checked
+        if method == "POST" and route == "/api/pair":
+            return self._pair(body or {}, client)
+        level, device = self.access(path, headers, client)
+        if level == "none":
+            if is_local_client(client) or not self.session.config.remote:
+                return 401, {"error": "token required", "hint": "open the UI with ?token=... as printed when it started"}, json_t
+            return 401, {"error": "this phone is not paired", "hint": "scan the QR code on the Mac's dashboard"}, json_t
+        if level == "view":
+            if method == "GET" and route == "/api/status":
+                st = self.status(level)
+                return 200, st, json_t
+            if method == "POST" and route == "/api/takeover" and device:
+                self.remotes.takeover(device)
+                self._log(f"remote: {self.remotes.devices[device]['label']} took control")
+                return 200, {"ok": True}, json_t
+            return 423, {"error": "another phone is in control", "hint": "wait for it to go idle or tap Take over",
+                         "controller": self.remotes.controller_info()}, json_t
+        if route in self.OWNER_ONLY and level != "owner":
+            return 403, {"error": "only the Mac's own dashboard can do that"}, json_t
         try:
             if method == "GET":
-                if route == "/":
-                    return 200, load_page(), "text/html; charset=utf-8"
-                return 200, self._get(route, query), "application/json"
+                if route == "/api/status":
+                    return 200, self.status(level), json_t
+                return 200, self._get(route, query), json_t
             if method == "POST":
-                return 200, self._post(route, body or {}), "application/json"
-            return 404, {"error": "not found"}, "application/json"
+                if route == "/api/takeover":
+                    return 200, {"ok": True}, json_t
+                if route == "/api/forget":
+                    gone = self.remotes.forget(str(body["device_id"]) if body else "")
+                    return 200, {"ok": gone, "devices": self.remotes.describe()}, json_t
+                return 200, self._post(route, body or {}), json_t
+            return 404, {"error": "not found"}, json_t
         except RouteNotFound as exc:
             return 404, {"error": f"unknown route {exc}"}, "application/json"
         except RemoteApp.Busy as exc:
@@ -258,10 +433,21 @@ class RemoteApp:
         except (TypeError, ValueError) as exc:
             return 400, {"error": f"bad request: {exc}"}, "application/json"
 
+    def _pair(self, body: Dict[str, Any], client: Optional[str]) -> Tuple[int, Any, str]:
+        token = self.remotes.pair(str(body.get("code", "")), str(body.get("device_id", "")), str(body.get("label", "")),
+                                  client or "127.0.0.1")
+        if token is None:
+            return 400, {"error": "that code did not work", "hint": "the code changes after every phone that connects; "
+                         "use the one on the Mac's dashboard right now"}, "application/json"
+        self._log(f"remote: paired {body.get('label') or 'a phone'} from {client or 'this machine'}")
+        return 200, {"ok": True, "token": token, "device_id": body.get("device_id")}, "application/json"
+
     # -- GET -------------------------------------------------------------------------
     def _get(self, route: str, query: Dict[str, str]) -> Any:
         if route == "/api/status":
             return self.status()
+        if route == "/api/pairing":
+            return self.pairing_info()
         if route == "/api/devices":
             return [self._device(d) for d in self.session.bluez.devices()]
         if route == "/api/sources":
@@ -289,8 +475,11 @@ class RemoteApp:
             return job.to_dict()
         raise RouteNotFound(route)
 
-    def status(self) -> Dict[str, Any]:
+    def status(self, level: str = "owner") -> Dict[str, Any]:
         st = self.session.status()  # read-only: never queue behind a long job
+        st["access"] = level
+        if level != "owner":
+            st["controller"] = self.remotes.controller_info()
         cfg = self.session.config
         st["config"] = {k: getattr(cfg, k) for k in cfg.SETTABLE}
         st["version"] = __version__
@@ -299,21 +488,42 @@ class RemoteApp:
         st["job"] = active.to_dict() if active else None
         st["engines"] = ["auto", "aggregate", "relay"] if st.get("platform") == "mac" else ["auto", "pipewire", "pulse"]
         st["can_quit"] = self.on_quit is not None
-        st["remote"] = self.remote_info()
+        st["remote"] = self.remote_info(owner=level == "owner")
         return st
 
-    def remote_info(self) -> Dict[str, Any]:
-        """How a phone on the same network can open this dashboard, if the server listens for it."""
+    def pairing_info(self) -> Dict[str, Any]:
+        """The current single-use code and the address that carries it (owner only)."""
+        code = self.remotes.pairing_code()
+        host, port = self.bind if self.bind else (None, None)
+        base = None
+        if host in ("0.0.0.0", "", "::") and port:
+            ips = lan_addresses()
+            base = f"http://{ips[0] if ips else host_name()}:{port}/"
+        return {"code": code, "url": f"{base}?pair={code}" if base else None,
+                "expires_s": round(max(0.0, self.remotes.code_expires - self.remotes.clock()))}
+
+    def remote_info(self, owner: bool = True) -> Dict[str, Any]:
+        """How a phone on the same network joins: with the phone remote on, the address carries the
+        single-use pairing code (owner's view only); otherwise the plain address with the master token."""
         host, port = self.bind if self.bind else (None, None)
         lan = host in ("0.0.0.0", "", "::")
-        urls: List[str] = []
+        pairing_mode = bool(self.session.config.remote)
+        info: Dict[str, Any] = {"enabled": pairing_mode, "lan": lan, "port": port, "token_set": bool(self.token),
+                                "urls": [], "qr": None, "controller": self.remotes.controller_info(),
+                                "devices": self.remotes.describe() if owner else []}
+        if not owner:
+            return info
         if lan and port:
-            suffix = f"?token={self.token}" if self.token else ""
+            if pairing_mode:
+                code = self.remotes.pairing_code()
+                suffix = f"?pair={code}"
+                info["pairing"] = {"code": code, "expires_s": round(max(0.0, self.remotes.code_expires - self.remotes.clock()))}
+            else:
+                suffix = f"?token={self.token}" if self.token else ""
             names = [host_name()] + lan_addresses()
-            urls = [f"http://{h}:{port}/{suffix}" for h in names if h]
-        return {"enabled": bool(self.session.config.remote), "lan": lan, "port": port,
-                "token_set": bool(self.token), "urls": urls,
-                "qr": next((u for u in urls if u.split("//")[1][0].isdigit()), urls[0] if urls else None)}
+            info["urls"] = [f"http://{h}:{port}/{suffix}" for h in names if h]
+            info["qr"] = next((u for u in info["urls"] if u.split("//")[1][0].isdigit()), info["urls"][0] if info["urls"] else None)
+        return info
 
     @staticmethod
     def _device(d: Any) -> Dict[str, Any]:
@@ -474,10 +684,11 @@ def make_handler(app: RemoteApp):
             self.wfile.write(data)
 
         def _headers(self) -> Dict[str, str]:
-            return {"X-Soundscape-Token": self.headers.get("X-Soundscape-Token", "")}
+            return {"X-Soundscape-Token": self.headers.get("X-Soundscape-Token", ""),
+                    "X-Soundscape-Device": self.headers.get("X-Soundscape-Device", "")}
 
         def do_GET(self) -> None:  # noqa: N802
-            self._send(*app.handle("GET", self.path, None, self._headers()))
+            self._send(*app.handle("GET", self.path, None, self._headers(), self.client_address[0]))
 
         def do_POST(self) -> None:  # noqa: N802
             length = int(self.headers.get("Content-Length") or 0)
@@ -487,7 +698,7 @@ def make_handler(app: RemoteApp):
             except json.JSONDecodeError:
                 self._send(400, {"error": "invalid JSON"}, "application/json")
                 return
-            self._send(*app.handle("POST", self.path, body, self._headers()))
+            self._send(*app.handle("POST", self.path, body, self._headers(), self.client_address[0]))
 
     return Handler
 

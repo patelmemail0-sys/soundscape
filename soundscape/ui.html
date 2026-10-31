@@ -224,6 +224,13 @@ section{min-width:0}
 .qr svg{display:block}
 .remote-text{flex:1 1 220px;min-width:0;display:grid;gap:6px;font-size:var(--t0)}
 .addr{font-size:1rem;font-weight:600;word-break:break-all;user-select:all;-webkit-user-select:all}
+.phones{display:grid;margin-top:8px}
+.phone{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:var(--t0)}
+.phone .who{flex:1 1 auto;min-width:0}
+.phone .who .small{display:block}
+.gate{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:24px;background:color-mix(in oklch,var(--bg) 88%,transparent)}
+.gate-card{background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);padding:18px 20px;max-width:420px;width:100%;display:grid;gap:10px;box-shadow:var(--shadow)}
+.gate-card p{color:var(--fg-2);font-size:var(--t0)}
 
 /* doctor */
 .checks{display:grid}
@@ -367,16 +374,18 @@ section{min-width:0}
 
     <section aria-labelledby="hRemote">
       <div class="sec-head"><h2 id="hRemote">Phone remote</h2><span class="meta" id="remoteNote"></span></div>
-      <div class="setting"><div class="txt"><label for="cfgRemote">Let phones on this Wi-Fi open this dashboard</label><span class="small" id="remoteHint">a token in the address keeps everyone else out; takes effect the next time Soundscape starts</span></div><input type="checkbox" class="switch" role="switch" id="cfgRemote"></div>
+      <div class="setting"><div class="txt"><label for="cfgRemote">Let phones on this Wi-Fi open this dashboard</label><span class="small" id="remoteHint">phones connect with a single-use code from this screen, one at a time; takes effect the next time Soundscape starts</span></div><input type="checkbox" class="switch" role="switch" id="cfgRemote"></div>
       <div class="remote" id="remoteBox" hidden>
         <div class="qr" id="qr"></div>
         <div class="remote-text">
           <p>Point the phone's camera at the code, or type the address in its browser:</p>
           <p class="addr" id="remoteUrl"></p>
           <p class="small" id="remoteAlt"></p>
-          <p class="small">The phone must be on the same Wi-Fi as this Mac. The first time, macOS may ask whether Python can accept incoming connections: click Allow.</p>
+          <p class="small" id="pairNote"></p>
+          <p class="small">One phone controls at a time. A new phone connects with the code on this screen; a phone that has connected before reconnects by itself while it is on this Wi-Fi. The first time, macOS may ask whether Python can accept incoming connections: click Allow.</p>
         </div>
       </div>
+      <div class="phones" id="phones" hidden></div>
     </section>
   </div>
 
@@ -386,6 +395,13 @@ section{min-width:0}
   </section>
 </main>
 
+<div class="gate" id="gate" hidden role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+  <div class="gate-card">
+    <h2 id="gateTitle"></h2>
+    <p id="gateBody"></p>
+    <div class="row"><button class="pri" id="gateTake" hidden>Take over</button><button id="gateRetry">Try again</button></div>
+  </div>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite">
   <span class="spin" id="toastSpin" hidden></span>
   <b id="toastTitle"></b>
@@ -394,8 +410,22 @@ section{min-width:0}
 </div>
 
 <script>
-const TOKEN = new URLSearchParams(location.search).get('token') || '';
-const PAGE_VERSION = '0.7.0', SERVER_VERSION = '__SERVER_VERSION__';
+const PARAMS = new URLSearchParams(location.search);
+const PAIR_CODE = PARAMS.get('pair') || '';
+const TOKEN = PARAMS.get('token') || '';
+const STORE_KEY = 'soundscape.device';
+let DEVICE = null;
+try { const d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); if (d && d.id && d.token) DEVICE = d; } catch (e) {}
+function saveDevice(d) { DEVICE = d; try { if (d) localStorage.setItem(STORE_KEY, JSON.stringify(d)); else localStorage.removeItem(STORE_KEY); } catch (e) {} }
+function newDeviceId() { try { return crypto.randomUUID(); } catch (e) { return 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36); } }
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
+  const br = /Edg/.test(ua) ? 'Edge' : /CriOS|Chrome/.test(ua) ? 'Chrome' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : 'browser';
+  return `${dev} (${br})`;
+}
+function authHeaders() { return {'X-Soundscape-Token': TOKEN || (DEVICE ? DEVICE.token : ''), 'X-Soundscape-Device': DEVICE ? DEVICE.id : ''}; }
+const PAGE_VERSION = '0.8.0', SERVER_VERSION = '__SERVER_VERSION__';
 const $ = id => document.getElementById(id);
 let status = null, jobId = null, pathWasUp = null;
 if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) $('stale').hidden = false;
@@ -483,13 +513,41 @@ const acousticMs = m => m / SPEED_OF_SOUND * 1000;
 const fmtDist = m => (Math.round(m * 100) / 100) + ' m';
 
 async function api(path, body) {
-  const headers = {'X-Soundscape-Token': TOKEN};
+  const headers = authHeaders();
   if (body !== undefined) headers['content-type'] = 'application/json';
   const r = await fetch(path, body !== undefined ? {method: 'POST', headers, body: JSON.stringify(body)} : {headers});
   const j = await r.json().catch(() => ({error: 'bad response'}));
+  if (r.status === 401 || r.status === 423) { showGate(r.status === 423 ? {access: 'view', controller: j.controller} : j); throw new Error(j.error || 'error'); }
   if (!r.ok) { toast(j.error || 'error', j.hint || '', false); throw new Error(j.error || 'error'); }
   return j;
 }
+function showGate(info) {
+  const g = $('gate'); g.hidden = false; document.querySelector('main').inert = true;
+  if (info && info.access === 'view') {
+    const c = info.controller || {};
+    $('gateTitle').textContent = 'Another phone is in control';
+    $('gateBody').textContent = `${c.label || 'A paired phone'} is using Soundscape right now (active ${c.seen_s != null ? Math.round(c.seen_s) + ' s' : 'moments'} ago). Control frees up by itself about 20 seconds after that phone leaves, or take it over now.`;
+    $('gateTake').hidden = false;
+  } else {
+    $('gateTitle').textContent = info && info.error ? info.error.charAt(0).toUpperCase() + info.error.slice(1) : 'Not connected';
+    $('gateBody').textContent = info && info.hint ? info.hint : '';
+    $('gateTake').hidden = true;
+    if (info && /not paired/.test(info.error || '')) saveDevice(null);
+  }
+}
+function hideGate() { $('gate').hidden = true; document.querySelector('main').inert = false; }
+async function pairNow(code) {
+  const id = (DEVICE && DEVICE.id) || newDeviceId();
+  showGate({error: 'connecting this phone', hint: 'one moment'});
+  let r, j;
+  try { r = await fetch('/api/pair', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({code, device_id: id, label: deviceLabel()})}); j = await r.json(); }
+  catch (e) { showGate({error: 'could not reach Soundscape', hint: 'is the phone on the same Wi-Fi as the Mac?'}); return; }
+  if (r.ok && j.token) { saveDevice({id, token: j.token}); history.replaceState(null, '', location.pathname); hideGate(); toast('Connected', 'this phone controls Soundscape now and reconnects by itself on this Wi-Fi', false); return true; }
+  showGate({error: j.error || 'could not connect', hint: j.hint || ''});
+  return false;
+}
+$('gateRetry').addEventListener('click', () => { if (PAIR_CODE && !DEVICE) pairNow(PAIR_CODE).then(refresh); else refresh(); });
+$('gateTake').addEventListener('click', async () => { try { await fetch('/api/takeover', {method: 'POST', headers: {...authHeaders(), 'content-type': 'application/json'}, body: '{}'}); } catch (e) {} refresh(); });
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function toast(title, body, spinning) {
   const t = $('toast'); t.classList.add('show');
@@ -522,8 +580,14 @@ async function pollJob() {
 
 // ---------- status
 async function refresh() {
-  try { status = await api('/api/status'); } catch (e) { $('engine').textContent = 'offline'; $('engine').classList.remove('live'); $('offline').hidden = false; return; }
+  let r, j = null;
+  try { r = await fetch('/api/status', {headers: authHeaders()}); j = await r.json().catch(() => null); }
+  catch (e) { $('engine').textContent = 'offline'; $('engine').classList.remove('live'); $('offline').hidden = false; return; }
+  if (r.status === 401) { showGate(j || {error: 'not connected'}); return; }
+  if (!r.ok || !j) { $('engine').textContent = 'offline'; $('engine').classList.remove('live'); $('offline').hidden = false; return; }
   $('offline').hidden = true;
+  if (j.access === 'view') showGate(j); else hideGate();
+  status = j;
   render(status);
 }
 function render(s) {
@@ -656,17 +720,28 @@ function renderSettings(s) {
   $('cfgDefault').checked = !!c.set_default_sink;
 }
 function renderRemote(s) {
+  const sec = document.querySelector('section[aria-labelledby="hRemote"]');
+  sec.hidden = s.access && s.access !== 'owner';  // phones never see the pairing code or the phone list
+  if (sec.hidden) return;
   const r = s.remote || {}, want = !!(s.config && s.config.remote);
   if (document.activeElement !== $('cfgRemote')) $('cfgRemote').checked = want;
   const box = $('remoteBox'), live = !!(r.lan && r.urls && r.urls.length);
   box.hidden = !live;
   $('remoteNote').textContent = live ? (r.token_set ? 'listening on this Wi-Fi' : 'listening on this Wi-Fi, no token') : (want ? 'quit and open Soundscape again to turn on' : 'off');
   $('remoteHint').textContent = live && !r.token_set ? 'warning: without a token anyone on the network can change volumes; start with --token or turn the switch on and restart'
-    : 'a token in the address keeps everyone else out; takes effect the next time Soundscape starts';
+    : 'phones connect with a single-use code from this screen, one at a time; takes effect the next time Soundscape starts';
   if (!live) return;
   const ipUrl = r.qr || r.urls[0], others = r.urls.filter(u => u !== ipUrl);
   $('remoteUrl').textContent = ipUrl;
   $('remoteAlt').textContent = others.length ? 'also: ' + others.join('  ') : '';
+  $('pairNote').textContent = r.pairing ? `Code ${r.pairing.code}: single use, it changes after each phone connects.` : '';
+  const ph = $('phones'), devices = r.devices || [];
+  ph.hidden = !devices.length;
+  if (devices.length) {
+    const c = r.controller;
+    ph.innerHTML = `<div class="small" style="padding:6px 0">${c ? esc(c.label) + ' is in control · active ' + Math.round(c.seen_s) + ' s ago' : 'No phone is connected right now; the first known phone to open the page takes control.'}</div>` +
+      devices.map(d => `<div class="phone"><span class="sdot" style="--c:${d.in_control ? 'var(--ok)' : 'var(--fg-2)'}" aria-hidden="true"></span><span class="who">${esc(d.label)}<span class="small">${d.in_control ? 'in control' : 'known phone'} · last seen ${d.seen_s < 60 ? Math.round(d.seen_s) + ' s' : Math.round(d.seen_s / 60) + ' min'} ago${d.last_ip ? ' · ' + esc(d.last_ip) : ''}</span></span><button class="quiet danger" data-forget="${esc(d.id)}">Forget</button></div>`).join('');
+  }
   const q = $('qr'); if (q.dataset.text !== ipUrl) { try { q.innerHTML = QR.svg(ipUrl, 168, 'QR code for ' + ipUrl); q.dataset.text = ipUrl; } catch (e) { q.textContent = ''; } }
 }
 function renderSync(m) {
@@ -781,8 +856,10 @@ $('cfgPin').addEventListener('change', ev => cfg('pin_microphone', ev.target.che
 $('cfgComp').addEventListener('change', ev => cfg('latency_compensate', ev.target.checked));
 $('cfgDefault').addEventListener('change', ev => cfg('set_default_sink', ev.target.checked));
 $('cfgRemote').addEventListener('change', ev => cfg('remote', ev.target.checked));
+$('phones').addEventListener('click', ev => { const b = ev.target.closest('button[data-forget]'); if (!b) return; if (!confirm('Forget this phone? It will need to scan the code again.')) return; api('/api/forget', {device_id: b.dataset.forget}).then(() => { toast('Phone forgotten', '', false); refresh(); }).catch(quiet); });
 $('mediaRow').addEventListener('click', ev => { const b = ev.target.closest('button[data-media]'); if (b) media(b.dataset.media); });
-refresh(); refreshLog(); loadSources();
+if (PAIR_CODE) pairNow(PAIR_CODE).then(ok => { if (ok) { refresh(); refreshLog(); loadSources(); } });
+else { refresh(); refreshLog(); loadSources(); }
 setInterval(refresh, 2500); setInterval(refreshLog, 5000);
 </script>
 </body>

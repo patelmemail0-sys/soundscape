@@ -193,6 +193,14 @@ Python may accept incoming connections, it must be allowed (System Settings > Ne
 Firewall > Options). Type the address exactly as shown, including `?token=...`; the `.local`
 address works on iPhones, the numeric one everywhere.
 
+**"This phone is not paired" / "Another phone is in control"**
+
+Only paired phones may use the dashboard, one at a time. To pair, open the address from the
+QR code (or type it with the code) shown on the Mac's dashboard; the code changes after every
+phone that connects, so a photo of an old code does not work. A phone that was forgotten on
+the Mac must scan again. "Another phone is in control" means a paired phone is active: wait
+about 20 seconds after it closes the page, or tap Take over.
+
 **The transport buttons do nothing on the Mac**
 
 They drive Music or Spotify through AppleScript; whichever is running gets the command. Music
