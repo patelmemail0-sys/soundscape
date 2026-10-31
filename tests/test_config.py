@@ -2,7 +2,14 @@ import json
 
 import pytest
 
-from soundscape.config import Config, Speaker, mac_underscored, normalize_mac
+from soundscape.config import (
+    Config,
+    Speaker,
+    acoustic_ms,
+    mac_underscored,
+    normalize_mac,
+    parse_distance,
+)
 from soundscape.errors import ConfigError
 
 
@@ -79,3 +86,19 @@ def test_positions_are_free_form_and_ordered():
     assert cfg.next_position() == "speaker5"
     assert cfg.find("Kitchen").address == "AA:BB:CC:DD:EE:05"
     assert cfg.find("living room") is None
+
+
+def test_parse_distance_units_range_and_round_trip():
+    assert parse_distance("1.2 m") == 1.2 and parse_distance("120cm") == 1.2 and parse_distance("3,5") == 3.5
+    assert parse_distance(" 4 ft ") == pytest.approx(1.219, abs=0.001) and parse_distance("48in") == pytest.approx(1.219, abs=0.001)
+    assert parse_distance(2) == 2.0 and parse_distance("") is None and parse_distance("none") is None and parse_distance(None) is None
+    for bad in ("far", "-1", "250 m", "1.2 km", True):
+        with pytest.raises(ConfigError):
+            parse_distance(bad)
+    assert acoustic_ms(1.0) == pytest.approx(2.915, abs=0.001)
+    sp = Speaker(address="AA:BB:CC:DD:EE:01", position="left", distance_m="4 ft")  # type: ignore[arg-type]
+    assert sp.distance_m == pytest.approx(1.219, abs=0.001) and sp.acoustic_ms == pytest.approx(3.55, abs=0.01)
+    assert Speaker(address="AA:BB:CC:DD:EE:02", position="right").acoustic_ms is None
+    cfg = Config(speakers=[sp])
+    again = Config.from_dict(json.loads(json.dumps(cfg.to_dict())))
+    assert again.speakers[0].distance_m == sp.distance_m

@@ -19,6 +19,42 @@ POSITION_RE = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
 LEGACY_POSITIONS = {"third": 3, "fourth": 4}
 ENGINES = ("auto", "pipewire", "pulse", "aggregate", "relay")
 SINK_NAME = "soundscape"
+SPEED_OF_SOUND_M_S = 343.0  # dry air at 20 C; temperature moves it by under 2 %
+MAX_DISTANCE_M = 100.0
+_DISTANCE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*(m|meter|meters|metre|metres|cm|ft|feet|foot|'|in|inch|inches|\")?$")
+_UNIT_M = {"m": 1.0, "meter": 1.0, "meters": 1.0, "metre": 1.0, "metres": 1.0, "cm": 0.01,
+           "ft": 0.3048, "feet": 0.3048, "foot": 0.3048, "'": 0.3048,
+           "in": 0.0254, "inch": 0.0254, "inches": 0.0254, '"': 0.0254}
+
+
+def parse_distance(value: object) -> Optional[float]:
+    """Distance from the calibration microphone to a speaker, in metres.
+
+    Accepts a number (metres) or text with a unit: ``"1.2 m"``, ``"120 cm"``, ``"4 ft"``,
+    ``"48 in"``. Empty, ``none`` or ``-`` clears it (returns ``None``).
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ConfigError(f"not a distance: {value!r}", "examples: 1.2 m, 120 cm, 4 ft, 48 in")
+    if isinstance(value, (int, float)):
+        metres = float(value)
+    else:
+        text = str(value).strip().lower().replace(",", ".")
+        if text in ("", "none", "-", "clear", "unset", "null"):
+            return None
+        m = _DISTANCE_RE.match(text)
+        if not m:
+            raise ConfigError(f"not a distance: {value!r}", "examples: 1.2 m, 120 cm, 4 ft, 48 in")
+        metres = float(m.group(1)) * _UNIT_M[m.group(2) or "m"]
+    if metres != metres or not 0 <= metres <= MAX_DISTANCE_M:
+        raise ConfigError(f"distance {value!r} is out of range", f"use 0 to {MAX_DISTANCE_M:.0f} m")
+    return round(metres, 3)
+
+
+def acoustic_ms(distance_m: float) -> float:
+    """How long sound takes to travel ``distance_m`` metres, in ms (about 2.9 ms per metre)."""
+    return distance_m / SPEED_OF_SOUND_M_S * 1000.0
 
 
 def normalize_mac(value: str) -> str:
@@ -60,10 +96,17 @@ class Speaker:
     position: str = "left"
     offset_ms: float = 0.0  # extra delay applied to THIS speaker so it lines up with the others
     volume: Optional[int] = None  # per-speaker trim in percent; None = full level (the speaker's own max)
+    distance_m: Optional[float] = None  # metres from the calibration microphone (the laptop); None = unknown
 
     def __post_init__(self) -> None:
         self.address = normalize_mac(self.address)
         self.position = normalize_position(self.position)
+        self.distance_m = parse_distance(self.distance_m)
+
+    @property
+    def acoustic_ms(self) -> Optional[float]:
+        """Sound travel time from this speaker to the microphone, when the distance is known."""
+        return None if self.distance_m is None else acoustic_ms(self.distance_m)
 
     @property
     def is_stereo_side(self) -> bool:

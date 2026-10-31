@@ -163,11 +163,24 @@ soundscape sync --auto          # uses the default microphone
 soundscape sync --auto --source alsa_input.usb-Blue_Yeti-00.analog-stereo
 ```
 
-The calibrator plays a short chirp through the first speaker, then the second, records both
-with the microphone, finds each chirp by cross-correlation, and delays the early speaker by
-the measured difference. Stand the microphone roughly equidistant from the speakers (every
-metre of difference is about 3 ms) and keep the room quiet for seven seconds. Run it again
-after moving a speaker. If you want to do it by ear instead:
+The calibrator plays a short chirp through each speaker in turn, records them with the
+microphone, finds each chirp by cross-correlation, and delays the early speakers by the
+measured difference. The microphone hears a far speaker late even when it plays on time
+(sound travels about 34 cm per millisecond), so tell Soundscape how far each speaker stands
+from the laptop and that travel time is taken out of the measurement:
+
+```bash
+soundscape distance left 1.2m        # metres, cm, ft or in: 120cm, 4ft, 48in
+soundscape distance right 4ft
+soundscape sync --auto
+```
+
+or type the distance on each speaker's card in the dashboard. With distances set, the
+speakers themselves are aligned no matter where the laptop sits; a tape measure to the
+nearest 30 cm is plenty (that is 1 ms). Without distances, Soundscape aligns the sound at
+the laptop's position, so stand it roughly equidistant from the speakers (every metre of
+difference is about 3 ms). Keep the room quiet for seven seconds and run it again after
+moving a speaker. If you want to do it by ear instead:
 
 ```bash
 soundscape sync                 # loops a click track; nudge with [ ] , . until it is one click

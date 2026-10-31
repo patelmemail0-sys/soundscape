@@ -90,6 +90,14 @@ speakers and the room quiet for seven seconds. If you have no usable microphone,
 `soundscape sync` loops a click track and you nudge with `[` `]` (5 ms) and `,` `.` (1 ms)
 until it collapses into a single click.
 
+**In sync next to the laptop, out of sync elsewhere in the room**
+
+Calibration aligned the sound where the microphone was: a speaker 2 m further from the
+laptop was heard about 6 ms late and got "corrected" for it. Tell Soundscape the distances
+(`soundscape distance left 1.2m`, `soundscape distance right 4ft`, or the Distance field on
+each speaker card) and calibrate again; the travel time is taken out and the speakers
+themselves are aligned. Check with `soundscape distance`.
+
 **"chirps were not detected reliably (confidence ...)"**
 Too much noise, speakers too quiet, or the microphone source is wrong.
 `pactl list short sources` shows the microphones; pass `--source NAME`. Never pass a

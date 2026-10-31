@@ -120,6 +120,7 @@ def test_sync_job_reports_measurement(session, world, runner):
     session._sleep = lambda _s: None
     result = done(app.handle("POST", "/api/sync", {}))
     assert result["speakers"][1]["lag_ms"] == pytest.approx(12.0, abs=0.3)
+    assert result["speakers"][1]["mic_lag_ms"] == pytest.approx(12.0, abs=0.3) and result["distance_corrected"] is False
     assert result["speakers"][0]["applied_ms"] == pytest.approx(12.0, abs=0.3)
     assert result["confidence"] > 4
     assert app.handle("GET", "/api/status", None)[1]["last_sync"]["spread_ms"] == pytest.approx(12.0, abs=0.3)
@@ -214,3 +215,15 @@ def test_real_server_handles_concurrent_requests(session, world):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_distance_api(session, world):
+    app = app_for(session)
+    status, body, _ = app.handle("POST", "/api/distance", {"target": "left", "distance": "4 ft"})
+    assert status == 200 and body["distance_m"] == pytest.approx(1.219, abs=0.001)
+    assert body["acoustic_ms"] == pytest.approx(3.55, abs=0.01) and body["distances"]["right"] is None
+    assert app.handle("GET", "/api/status", None)[1]["speakers"][0]["distance_m"] == pytest.approx(1.219, abs=0.001)
+    status, body, _ = app.handle("POST", "/api/distance", {"target": "left", "distance": "far"})
+    assert status == 400 and "not a distance" in body["error"]
+    status, body, _ = app.handle("POST", "/api/distance", {"target": "left", "distance": ""})
+    assert status == 200 and body["distance_m"] is None

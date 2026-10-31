@@ -167,6 +167,9 @@ section{min-width:0}
 .ctl > span,.ctl > label{font-size:var(--t0);color:var(--fg-2)}
 .ctl output{text-align:right;font-size:var(--t0)}
 .ctl.delay{grid-template-columns:52px 1fr}
+.ctl.dist{grid-template-columns:52px minmax(0,1fr) auto}
+.ctl.dist input{min-width:0;width:100%;padding:4px 8px;font-size:var(--t0)}
+.ctl.dist output{white-space:nowrap}
 .card .buttons{display:flex;gap:8px;flex-wrap:wrap;padding-top:2px}
 .card .buttons .quiet{margin-left:auto}
 .card.skel{min-height:190px;border-style:dashed;background:transparent}
@@ -344,7 +347,7 @@ section{min-width:0}
         <label class="small" for="source">Microphone</label>
         <span class="sel"><select id="source"><option value="">built-in microphone (recommended)</option></select></span>
       </div>
-      <p class="lead" style="margin-top:10px">One chirp per speaker, recorded with the laptop microphone; everyone is then delayed to match the slowest speaker. Keep the room quiet and the laptop roughly between the speakers.</p>
+      <p class="lead" style="margin-top:10px">One chirp per speaker, recorded with the laptop microphone; everyone is then delayed to match the slowest speaker. Sound takes about 3 ms per metre to reach the microphone, so enter each speaker's distance from the laptop on its card: that travel time is taken out and the speakers themselves are aligned, wherever the laptop stands. Without distances the sound is aligned where the laptop is. Keep the room quiet.</p>
     </section>
 
     <section aria-labelledby="hSettings">
@@ -371,7 +374,7 @@ section{min-width:0}
 
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
-const PAGE_VERSION = '0.6.0', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.6.1', SERVER_VERSION = '__SERVER_VERSION__';
 const $ = id => document.getElementById(id);
 let status = null, jobId = null, pathWasUp = null;
 if (SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__')) $('stale').hidden = false;
@@ -385,6 +388,9 @@ const ICON = {
 };
 const SERIES = 6;
 const seriesVar = i => `var(--s${(i % SERIES) + 1})`;
+const SPEED_OF_SOUND = 343;  // m/s
+const acousticMs = m => m / SPEED_OF_SOUND * 1000;
+const fmtDist = m => (Math.round(m * 100) / 100) + ' m';
 
 async function api(path, body) {
   const headers = {'X-Soundscape-Token': TOKEN};
@@ -489,8 +495,10 @@ function renderSpeakers(s) {
         <div class="alert modewarn" hidden>${ICON.warn}<span>Headset mode: mono, phone quality, out of sync.</span><button data-act="reconnect">Reconnect</button></div>
         <label class="ctl"><span>Volume</span><input type="range" min="0" max="100" class="v"><output class="vv"></output></label>
         <div class="ctl delay"><span id="${id}-d">Delay</span><span class="seg" role="group" aria-labelledby="${id}-d"><button data-act="off" data-d="-5" aria-label="Delay minus 5 ms">−5</button><button data-act="off" data-d="-1" aria-label="Delay minus 1 ms">−1</button><output class="o"></output><button data-act="off" data-d="1" aria-label="Delay plus 1 ms">+1</button><button data-act="off" data-d="5" aria-label="Delay plus 5 ms">+5</button></span></div>
+        <label class="ctl dist"><span>Distance</span><input type="text" class="dist" inputmode="decimal" placeholder="to the laptop: 1.2 m or 4 ft"><output class="dms"></output></label>
         <div class="buttons"><button data-act="mute" aria-pressed="false">Mute</button><button data-act="tone">Tone</button><button class="quiet danger" data-act="remove">Remove</button></div>`;
       el.querySelector('.v').addEventListener('input', ev => { el.querySelector('.vv').textContent = ev.target.value + '%'; vol(sp.address, ev.target.value); });
+      el.querySelector('input.dist').addEventListener('change', ev => dist(el.dataset.address, ev.target.value));
       el.addEventListener('click', ev => {
         const b = ev.target.closest('button[data-act]'); if (!b) return;
         const act = b.dataset.act, addr = el.dataset.address, name = el.querySelector('.name').textContent;
@@ -513,6 +521,9 @@ function renderSpeakers(s) {
     const v = el.querySelector('.v'); v.setAttribute('aria-label', 'Volume of ' + sp.name);
     if (sp.volume != null && document.activeElement !== v) { v.value = sp.volume; el.querySelector('.vv').textContent = sp.volume + '%'; }
     el.querySelector('.o').textContent = (sp.offset_ms || 0).toFixed(1) + ' ms';
+    const di = el.querySelector('input.dist'); di.setAttribute('aria-label', 'Distance from the laptop to ' + sp.name);
+    if (document.activeElement !== di) di.value = sp.distance_m != null ? fmtDist(sp.distance_m) : '';
+    el.querySelector('.dms').textContent = sp.distance_m != null ? '≈ ' + acousticMs(sp.distance_m).toFixed(1) + ' ms' : 'not set';
     const mb = el.querySelector('button[data-act="mute"]'); mb.textContent = sp.muted ? 'Unmute' : 'Mute'; mb.setAttribute('aria-pressed', sp.muted ? 'true' : 'false');
   });
   for (const el of [...box.children]) if (el.id && !s.speakers.some(sp => 'sp-' + sp.address.replace(/:/g, '') === el.id)) el.remove();
@@ -574,7 +585,8 @@ function renderSync(m) {
       <div class="track" role="img" aria-label="${esc(x.name)}: arrived ${fmt(x.lag_ms)} ms, ${change}, trim now ${x.offset_ms.toFixed(1)} ms"><span class="base"></span><span class="zero" style="left:${pos(0)}"></span><span class="span" style="left:${pos(Math.min(x.lag_ms, a))};width:calc(${pos(Math.max(x.lag_ms, a))} - ${pos(Math.min(x.lag_ms, a))})"></span><span class="mark" style="left:${pos(x.lag_ms)}"></span><span class="mark after" style="left:${pos(a)}"></span></div></div>`;
   }).join('');
   html += `<div class="legend"><span><i></i>measured arrival</span><span><i class="after"></i>after this pass's delay</span><span>relative to ${esc(m.speakers[0].name)}</span></div>`;
-  html += `<div class="small">measured ${new Date(m.at * 1000).toLocaleTimeString()} · confidence ${m.confidence >= 99 ? 'very high' : m.confidence.toFixed(1)} · spread ${m.spread_ms.toFixed(1)} ms · total trims on each card</div>`;
+  const where = m.distance_corrected ? 'distances taken out: the speakers themselves are aligned' : 'aligned where the laptop was; set each speaker\'s distance on its card to align the speakers themselves';
+  html += `<div class="small">measured ${new Date(m.at * 1000).toLocaleTimeString()} · confidence ${m.confidence >= 99 ? 'very high' : m.confidence.toFixed(1)} · spread ${m.spread_ms.toFixed(1)} ms · ${where} · total trims on each card</div>`;
   box.innerHTML = html;
   $('syncNote').textContent = m.spread_ms < 1 ? 'in sync' : 'trims applied';
 }
@@ -586,6 +598,13 @@ function vol(t, v) { clearTimeout(vt[t]); vt[t] = setTimeout(() => api('/api/vol
 function off(t, d) { api('/api/offset', {target: t, delta_ms: d}).then(r => { toast('Delay set', Object.entries(r.offsets || {}).map(([k, v]) => `${k}: +${v.toFixed(1)} ms`).join('   '), false); refresh(); }).catch(quiet); }
 function mute(t) { api('/api/mute', {target: t, toggle: true}).then(r => { toast(r.muted ? 'Muted' : 'Unmuted', '', false); refresh(); }).catch(quiet); }
 function media(a) { api('/api/media', {action: a}).then(r => { if (r.message) toast('Media', r.message, false); }).catch(quiet); }
+function dist(t, v) {
+  api('/api/distance', {target: t, distance: v}).then(r => {
+    if (r.distance_m == null) toast('Distance cleared', 'calibration will align the sound where the laptop is', false);
+    else toast('Distance saved', `${fmtDist(r.distance_m)} ≈ ${r.acoustic_ms.toFixed(1)} ms of sound travel, taken out of the next calibration`, false);
+    refresh();
+  }).catch(quiet);
+}
 function cfg(k, v) { api('/api/config', {key: k, value: v}).then(r => { toast(k + ' saved', r.note || '', false); refresh(); }).catch(quiet); }
 async function removeSpeaker(addr, name) { if (!confirm(`Remove ${name} from Soundscape?`)) return; await api('/api/remove', {target: addr}).catch(quiet); refresh(); }
 async function calibrate() {

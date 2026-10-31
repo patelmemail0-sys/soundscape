@@ -350,6 +350,10 @@ class RemoteApp:
                     sp = s.set_offset(target, float(body["offset_ms"]))
                 return {"ok": True, "offset_ms": sp.offset_ms,
                         "offsets": {x.position: x.offset_ms for x in s.config.speakers}}
+            if route == "/api/distance":
+                sp = s.set_distance(str(body["target"]), body.get("distance"))
+                return {"ok": True, "distance_m": sp.distance_m, "acoustic_ms": sp.acoustic_ms,
+                        "distances": {x.position: x.distance_m for x in s.config.speakers}}
             if route == "/api/media":
                 return self._media(str(body.get("action", "play-pause")))
         finally:
@@ -364,8 +368,10 @@ class RemoteApp:
         result = {
             "at": time.time(),
             "speakers": [{"address": sp.address, "position": sp.position, "name": sp.label,
-                          "lag_ms": lag, "applied_ms": m.applied.get(sp.address, 0.0), "offset_ms": sp.offset_ms}
-                         for sp, lag in zip(m.speakers, m.lag_ms)],
+                          "lag_ms": lag, "mic_lag_ms": heard, "applied_ms": m.applied.get(sp.address, 0.0),
+                          "offset_ms": sp.offset_ms, "distance_m": sp.distance_m}
+                         for sp, lag, heard in zip(m.speakers, m.lag_ms, m.mic_lag_ms or m.lag_ms)],
+            "distance_corrected": m.distance_corrected,
             "confidence": round(min(m.confidence, 99.0), 1), "spread_ms": round(m.spread_ms, 2),
         }
         self.last_sync = result

@@ -130,8 +130,11 @@ same pipeline, so startup jitter of the player cancels out and each arrival gap 
 nominal spacing is that speaker's lag relative to speaker 0. `dsp.locate` cross-correlates the
 recording with the chirp (FFT, numpy if present, pure Python otherwise), refines each peak
 parabolically for sub-sample precision, and reports a confidence (peak over window RMS) that
-must exceed 4 before anything is applied. Every speaker is then delayed by
-``max(lag) - lag`` so all of them wait for the slowest one.
+must exceed 4 before anything is applied. When every speaker has a distance from the
+microphone recorded (`Speaker.distance_m`, metres), the sound's travel time at 343 m/s is
+subtracted from each lag first, so the trims describe the speakers' own latencies rather
+than where the laptop stood; otherwise the lags are used as heard and the log says so.
+Every speaker is then delayed by ``max(lag) - lag`` so all of them wait for the slowest one.
 
 *By-ear mode*: loops a click track and nudges trims live from the keyboard, cycling through
 speakers with `t`; a negative nudge on one speaker is turned into a positive delay on all the

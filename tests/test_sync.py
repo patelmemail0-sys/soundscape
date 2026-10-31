@@ -113,3 +113,31 @@ def test_by_ear_needs_tty(session, monkeypatch):
     monkeypatch.setattr("sys.stdin", type("S", (), {"isatty": staticmethod(lambda: False)})())
     with pytest.raises(AudioError):
         cal.by_ear()
+
+
+def test_distance_compensation_removes_sound_travel_time(session, world, runner):
+    session.up()
+    # B is heard 12 ms late at the microphone, but it stands 2 m further away: 5.83 ms of that
+    # is sound travelling through the room, not Bluetooth latency.
+    session.set_distance("left", "1 m")
+    session.set_distance("right", "3 m")
+    install_mic(runner, synthetic_recording(0.180, 0.192))
+    logs = []
+    cal = Calibrator(session, log=logs.append, sleep=lambda _s: None)
+    m = cal.auto()
+    assert m.distance_corrected and m.mic_lag_ms[1] == pytest.approx(12.0, abs=0.3)
+    assert m.gap_ms == pytest.approx(12.0 - 5.83, abs=0.3)
+    assert world.delays["soundscape_left_delay"] == pytest.approx((12.0 - 5.83) / 1000, abs=0.0004)
+    assert any("travel time taken out" in line for line in logs) and any("heard +12.0 ms at the mic" in line for line in logs)
+
+
+def test_missing_distance_aligns_at_the_microphone(session, world, runner):
+    session.up()
+    session.set_distance("left", "1 m")  # the right speaker's distance is unknown: no correction, and the log says so
+    install_mic(runner, synthetic_recording(0.180, 0.192))
+    logs = []
+    cal = Calibrator(session, log=logs.append, sleep=lambda _s: None)
+    m = cal.auto()
+    assert not m.distance_corrected and m.gap_ms == pytest.approx(12.0, abs=0.3) and m.distance_ms is None
+    assert world.delays["soundscape_left_delay"] == pytest.approx(0.012, abs=0.0004)
+    assert any("no distance set for Living Room" in line for line in logs)

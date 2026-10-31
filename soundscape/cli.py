@@ -76,7 +76,8 @@ def print_status(status: dict) -> None:
         sink = sp["sink"] or "no sink"
         vol = f"{sp['volume']}%" if sp.get("volume") is not None else "-"
         mode = "  HEADSET MODE (music muted)" if sp.get("mode") == "headset" else ""
-        say(f"  {sp['position']:<6} {sp['name']:<28} {sp['address']}  {link:<22} {sink}  vol {vol}  delay +{sp['offset_ms']:.1f} ms{mode}")
+        dist = f"  {sp['distance_m']:.1f} m away" if sp.get("distance_m") is not None else ""
+        say(f"  {sp['position']:<6} {sp['name']:<28} {sp['address']}  {link:<22} {sink}  vol {vol}  delay +{sp['offset_ms']:.1f} ms{dist}{mode}")
     mic = status.get("microphone") or {}
     if mic.get("pinned"):
         say(f"microphone: {'pinned to ' + mic['pinned'] if mic.get('ok') else 'NOT on the pinned mic (' + str(mic.get('current')) + '); run `soundscape up`'}")
@@ -129,7 +130,7 @@ def cmd_scan(session: Session, args: argparse.Namespace) -> int:
 
 def cmd_add(session: Session, args: argparse.Namespace) -> int:
     sp = session.add_speaker(args.address, position=args.position, name=args.name or "",
-                             replace=args.replace, connect=not args.no_connect)
+                             replace=args.replace, connect=not args.no_connect, distance=args.distance)
     say(f"added {sp.label} as {sp.position}")
     n = len(session.config.speakers)
     if n >= 2:
@@ -219,6 +220,26 @@ def cmd_offset(session: Session, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_distance(session: Session, args: argparse.Namespace) -> int:
+    if args.speaker is None:
+        for sp in session.config.ordered():
+            dist = (f"{sp.distance_m:.2f} m  ({sp.acoustic_ms:.1f} ms of sound travel)"
+                    if sp.distance_m is not None and sp.acoustic_ms is not None else "not set")
+            say(f"  {sp.position:<8} {sp.label:<28} {dist}")
+        say("set one with `soundscape distance <speaker> 1.2m` (or 4ft, 120cm); `distance <speaker> none` clears it")
+        return 0
+    if args.value is None:
+        raise ConfigError("distance needs a value",
+                          "example: `soundscape distance right 3.5m`, `distance left 4ft`, or `distance right none`")
+    sp = session.set_distance(args.speaker, args.value)
+    if sp.distance_m is None or sp.acoustic_ms is None:
+        say(f"{sp.label}: distance cleared; calibration will align the sound where the microphone is")
+    else:
+        say(f"{sp.label}: {sp.distance_m:.2f} m from the microphone "
+            f"({sp.acoustic_ms:.1f} ms of sound travel, taken out of the next calibration)")
+    return 0
+
+
 def cmd_sync(session: Session, args: argparse.Namespace) -> int:
     from .sync import Calibrator
     cal = Calibrator(session, log=say)
@@ -226,6 +247,9 @@ def cmd_sync(session: Session, args: argparse.Namespace) -> int:
         m = cal.auto(source=args.source, apply=not args.no_apply, passes=args.passes)
         if m.applied_to is None:
             say("speakers are already within 0.5 ms; nothing changed" if abs(m.gap_ms) < 0.5 else "measured only; not applied")
+        if not m.distance_corrected:
+            say("tip: `soundscape distance <speaker> <metres>` for every speaker makes this align the speakers "
+                "themselves instead of the spot where the laptop stands")
         say("done. Re-run after moving a speaker or changing codec; offsets are remembered.")
     else:
         cal.by_ear(step_ms=args.step, fine_ms=args.fine)
@@ -548,6 +572,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--position", metavar="NAME",
                    help="left, right, or any name such as kitchen (default: left, right, speaker3, ...)")
     s.add_argument("--name", help="friendly name")
+    s.add_argument("--distance", metavar="M", help="how far it stands from the laptop's microphone (1.2m, 4ft, 120cm); "
+                   "lets `sync --auto` align the speakers themselves")
     s.add_argument("--replace", action="store_true")
     s.add_argument("--no-connect", action="store_true", help="only save; do not pair/connect now")
 
@@ -581,6 +607,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("speaker", help="left, right, address, name, or 'reset'")
     s.add_argument("ms", type=float, nargs="?")
     s.add_argument("--relative", action="store_true", help="add to the current delay instead of replacing it")
+
+    s = sub.add_parser("distance", help="how far each speaker stands from the laptop's microphone, so `sync --auto` "
+                       "aligns the speakers themselves rather than the spot where the laptop sits")
+    s.add_argument("speaker", nargs="?", help="left, right, address or name (omit to list)")
+    s.add_argument("value", nargs="?", help="1.2m, 120cm, 4ft, 48in, or none")
 
     s = sub.add_parser("sync", help="align the two speakers (by ear, or --auto with a microphone)")
     s.add_argument("--auto", action="store_true", help="measure with the microphone and apply")
@@ -632,7 +663,8 @@ COMMANDS = {
     "setup": cmd_setup, "doctor": cmd_doctor, "scan": cmd_scan, "add": cmd_add, "remove": cmd_remove,
     "reconnect": cmd_reconnect, "start": cmd_start,
     "up": cmd_up, "down": cmd_down, "status": cmd_status, "volume": cmd_volume, "mute": cmd_mute,
-    "offset": cmd_offset, "sync": cmd_sync, "test": cmd_test, "play": cmd_play, "remote": cmd_ui, "ui": cmd_ui,
+    "offset": cmd_offset, "distance": cmd_distance, "sync": cmd_sync, "test": cmd_test, "play": cmd_play,
+    "remote": cmd_ui, "ui": cmd_ui,
     "daemon": cmd_daemon, "config": cmd_config,
 }
 

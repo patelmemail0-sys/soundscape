@@ -245,3 +245,21 @@ def test_setup_retries_when_speaker_cannot_connect(runner, world, tmp_path, monk
     assert run(runner, root, "setup", "--seconds", "1") == 0
     assert "could not connect" in capsys.readouterr().err
     assert world.devices[MAC_B]["connected"]
+
+
+def test_distance_command(runner, world, tmp_path, capsys):
+    world.two_speakers()
+    root = tmp_path / "root"
+    assert run(runner, root, "add", MAC_A, "--position", "left", "--distance", "1.5m") == 0
+    assert run(runner, root, "add", MAC_B) == 0
+    assert run(runner, root, "distance", "right", "4 ft") == 0
+    assert "1.22 m from the microphone" in capsys.readouterr().out
+    assert run(runner, root, "distance") == 0
+    out = capsys.readouterr().out
+    assert "1.50 m" in out and "1.22 m" in out
+    cfg = Config.load(root / "config" / "config.json")
+    assert cfg.speakers[0].distance_m == 1.5 and cfg.speakers[1].distance_m == pytest.approx(1.219, abs=0.001)
+    assert run(runner, root, "distance", "right", "none") == 0
+    assert Config.load(root / "config" / "config.json").speakers[1].distance_m is None
+    assert run(runner, root, "distance", "right", "far") == 2
+    assert run(runner, root, "distance", "right") == 2

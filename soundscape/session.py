@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from . import platform as plat
 from .bluez import BlueZ, Device
-from .config import Config, Speaker
+from .config import Config, Speaker, parse_distance
 from .engine import ENGINES, Bound, Engine, EngineState, choose_engine
 from .errors import AudioError, BluetoothError, ConfigError, SoundscapeError
 from .paths import Paths
@@ -349,6 +349,14 @@ class Session:
         self.save_config()
         return sp
 
+    def set_distance(self, selector: str, distance: object) -> Speaker:
+        """Remember how far ``selector`` stands from the calibration microphone (the laptop), so
+        ``sync --auto`` can take the sound's travel time out of what the microphone hears."""
+        sp = self.config.require(selector)
+        sp.distance_m = parse_distance(distance)
+        self.save_config()
+        return sp
+
     def reset_offsets(self) -> None:
         """Zero every speaker's trim, live if the engine is up."""
         for sp in self.config.speakers:
@@ -455,6 +463,7 @@ class Session:
                 "volume": sink.volume_percent if sink else None,
                 "muted": sink.mute if sink else None,
                 "offset_ms": sp.offset_ms,
+                "distance_m": sp.distance_m,
                 "sample_rate": sink.sample_rate if sink else None,
                 "mode": ("headset" if sink.headset_mode else "music") if sink else None,
             })
@@ -487,13 +496,13 @@ class Session:
         return sorted(devices, key=lambda d: (not d.paired, -(d.rssi or -999), d.label))
 
     def add_speaker(self, address: str, position: Optional[str] = None, name: str = "",
-                    replace: bool = False, connect: bool = True) -> Speaker:
+                    replace: bool = False, connect: bool = True, distance: object = None) -> Speaker:
         if position is None:
             position = self.config.next_position()
         dev = self.bluez.device(address)
         if not name and dev:
             name = dev.label if dev.label != dev.address else ""
-        sp = Speaker(address=address, name=name, position=position)
+        sp = Speaker(address=address, name=name, position=position, distance_m=parse_distance(distance))
         self.config.add(sp, replace=replace)
         if connect:
             self.bluez.ensure_connected(sp.address, log=self.log)

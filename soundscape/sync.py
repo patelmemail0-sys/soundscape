@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from . import dsp, tones
-from .config import Speaker
+from .config import Speaker, acoustic_ms
 from .errors import AudioError, ConfigError
 from .session import Session
 
@@ -39,9 +39,12 @@ MAX_PLAUSIBLE_LAG_MS = 300.0  # two A2DP speakers never differ by more than this
 class Measurement:
     """Arrival of every speaker relative to the first one, in ms (positive: later)."""
     speakers: List[Speaker]
-    lag_ms: List[float]  # lag_ms[0] is always 0.0
+    lag_ms: List[float]  # lag_ms[0] is always 0.0; corrected for distance when every distance is known
     confidence: float
     applied: Dict[str, float] = field(default_factory=dict)  # address -> extra delay applied
+    mic_lag_ms: List[float] = field(default_factory=list)  # what the microphone heard, before any distance correction
+    distance_ms: Optional[List[float]] = None  # sound travel time from each speaker to the microphone
+    distance_corrected: bool = False
 
     @property
     def first(self) -> Speaker:
@@ -192,8 +195,18 @@ class Calibrator:
         sent = [t + LEAD_S - 0.3 for t in tones.calibration_times(count)]
         arrivals = dsp.locate(recording, template, rate, sent, max_latency_s=1.5)
         base = arrivals[0][0]
-        lags = [round((a - base - k * tones.CALIBRATION_SPACING_S) * 1000.0, 2) for k, (a, _c) in enumerate(arrivals)]
-        return Measurement(speakers=speakers, lag_ms=lags, confidence=min(c for _a, c in arrivals))
+        heard = [round((a - base - k * tones.CALIBRATION_SPACING_S) * 1000.0, 2) for k, (a, _c) in enumerate(arrivals)]
+        travel = [acoustic_ms(sp.distance_m) for sp in speakers if sp.distance_m is not None]
+        corrected = len(travel) == len(speakers)
+        if corrected:
+            # The microphone hears a far speaker late even when it plays on time (2.9 ms per
+            # metre). Taking the travel time out leaves the speakers' own latencies, so the
+            # trims line the speakers up wherever the laptop happened to stand.
+            lags = [round(h - (t - travel[0]), 2) for h, t in zip(heard, travel)]
+        else:
+            lags = list(heard)
+        return Measurement(speakers=speakers, lag_ms=lags, confidence=min(c for _a, c in arrivals),
+                           mic_lag_ms=heard, distance_ms=travel if corrected else None, distance_corrected=corrected)
 
     @staticmethod
     def _is_speaker_mic(source: str, speaker_macs: List[str]) -> bool:
@@ -209,8 +222,18 @@ class Calibrator:
         for i in range(passes):
             m = self.measure(source)
             ref = m.first
-            for sp, lag in zip(m.speakers[1:], m.lag_ms[1:]):
-                self.log(f"pass {i + 1}: {sp.label} arrives {lag:+.1f} ms relative to {ref.label}")
+            if i == 0:
+                if m.distance_corrected and m.distance_ms is not None:
+                    dists = ", ".join(f"{sp.label} {sp.distance_m:.2f} m ({t:.1f} ms)"
+                                      for sp, t in zip(m.speakers, m.distance_ms) if sp.distance_m is not None)
+                    self.log(f"distances: {dists}; travel time taken out, aligning the speakers themselves")
+                else:
+                    missing = ", ".join(sp.label for sp in m.speakers if sp.distance_m is None)
+                    self.log(f"no distance set for {missing}: aligning the sound where the microphone is "
+                             "(set `soundscape distance <speaker> <metres>` to align the speakers themselves)")
+            for sp, lag, h in zip(m.speakers[1:], m.lag_ms[1:], m.mic_lag_ms[1:]):
+                at_mic = f" (heard {h:+.1f} ms at the mic)" if m.distance_corrected else ""
+                self.log(f"pass {i + 1}: {sp.label} arrives {lag:+.1f} ms relative to {ref.label}{at_mic}")
             self.log(f"pass {i + 1}: confidence {m.confidence:.1f}, spread {m.spread_ms:.1f} ms")
             if m.confidence < min_confidence:
                 raise AudioError(f"chirps were not detected reliably (confidence {m.confidence:.1f})",

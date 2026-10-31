@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.1 - 2026-10-31
+
+* Distance compensation for calibration. The microphone hears a far speaker late even when it
+  plays on time (about 2.9 ms per metre), so each speaker can now carry its distance from
+  the laptop (`soundscape distance <speaker> 1.2m` / `4ft`, `add --distance`, the Distance
+  field on its dashboard card, `/api/distance`). With every distance set, `sync --auto`
+  subtracts the sound's travel time and aligns the speakers themselves, wherever the laptop
+  stands; without it the sound is aligned at the laptop's position, and the log and the
+  dashboard say which happened. Measurements report both what the microphone heard and
+  the corrected lag.
+
 ## 0.6.0 - 2026-10-31
 
 Dashboard redesign, built with the Impeccable design skill.
