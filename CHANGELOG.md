@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.2 - 2026-10-31
+
+* Volume from a phone. Touch-dragged sliders never take focus on iOS, so the status refresh
+  kept snapping them back while Bluetooth speakers were still reporting the old level. Sliders
+  now hold your value for three seconds after you touch them, send the final value when you
+  let go, and every volume row has −/+ buttons (5 % steps) that are reliable on a phone. A
+  volume request that never reaches Soundscape now shows a toast instead of failing silently.
+* A speaker added while the output is running joins it at once: `add` (CLI or dashboard)
+  rebuilds the output, and the watchdog rebuilds when a configured, connected speaker is
+  missing from the output, so a third speaker no longer stays silent until Rebuild is pressed.
+
 ## 0.8.1 - 2026-10-31
 
 * The Phone remote switch works live: no restart. Soundscape always listens on the network;

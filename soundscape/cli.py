@@ -133,7 +133,9 @@ def cmd_add(session: Session, args: argparse.Namespace) -> int:
                              replace=args.replace, connect=not args.no_connect, distance=args.distance)
     say(f"added {sp.label} as {sp.position}")
     n = len(session.config.speakers)
-    if n >= 2:
+    if session.state():
+        say(f"{sp.label} has joined the running output")
+    elif n >= 2:
         say(f"you have {n} speakers; run `soundscape up` to join them")
     return 0
 

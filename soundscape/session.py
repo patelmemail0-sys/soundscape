@@ -318,9 +318,25 @@ class Session:
             self.pin_microphone()
             problems = self.engine(state).missing(state)
             if not problems:
-                return state
-            self.log(f"lost {', '.join(problems)}; rebuilding")
+                left_out = self._connected_but_not_in(state)
+                if not left_out:
+                    return state
+                self.log(f"{', '.join(left_out)} connected but not in the output; rebuilding")
+            else:
+                self.log(f"lost {', '.join(problems)}; rebuilding")
         return self.up(rebuild=True)
+
+    def _connected_but_not_in(self, state: EngineState) -> List[str]:
+        """Configured speakers that are connected over Bluetooth but missing from the running output
+        (added after the output was built)."""
+        missing = [sp for sp in self.config.speakers if state.output_for(sp.address) is None]
+        if not missing:
+            return []
+        try:
+            devices = {d.address: d for d in self.bluez.devices()}
+        except SoundscapeError:
+            return []
+        return [sp.label for sp in missing if devices.get(sp.address) and devices[sp.address].connected]
 
     # -- live controls ---------------------------------------------------
     MAX_OFFSET_MS = 1000.0
@@ -496,7 +512,8 @@ class Session:
         return sorted(devices, key=lambda d: (not d.paired, -(d.rssi or -999), d.label))
 
     def add_speaker(self, address: str, position: Optional[str] = None, name: str = "",
-                    replace: bool = False, connect: bool = True, distance: object = None) -> Speaker:
+                    replace: bool = False, connect: bool = True, distance: object = None,
+                    join: bool = True) -> Speaker:
         if position is None:
             position = self.config.next_position()
         dev = self.bluez.device(address)
@@ -507,6 +524,10 @@ class Session:
         if connect:
             self.bluez.ensure_connected(sp.address, log=self.log)
         self.save_config()
+        if join and connect and self.state():
+            # the running output was built for the old set: rebuild it so the new speaker plays at once
+            self.log(f"rebuilding the output to include {sp.label}")
+            self.up(rebuild=True)
         return sp
 
     def remove_speaker(self, selector: str, forget: bool = False) -> Speaker:

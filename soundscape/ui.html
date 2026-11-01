@@ -107,7 +107,10 @@ section{min-width:0}
 .fact .k{color:var(--fg-2)}
 .fact .v{font-weight:600;color:var(--fg);overflow-wrap:anywhere}
 .fact .v.ok{color:var(--ok)}.fact .v.warn{color:var(--warn)}.fact .v.bad{color:var(--bad)}
-.master{display:grid;grid-template-columns:auto minmax(140px,220px) 52px auto;align-items:center;gap:10px;flex:0 1 460px}
+.master{display:grid;grid-template-columns:auto minmax(180px,280px) 52px auto;align-items:center;gap:10px;flex:0 1 520px}
+.vol{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px;min-width:0}
+.vol .step{padding:2px 0;width:30px;font-size:1rem;line-height:1.2}
+input[type=range]{touch-action:pan-y}
 .master label{font-size:var(--t0);color:var(--fg-2);white-space:nowrap}
 .master output{text-align:right;font-size:var(--t0)}
 .master-note{grid-column:1/-1;margin-top:-4px}
@@ -269,6 +272,8 @@ section{min-width:0}
   .col{gap:26px}
   .banner{padding:8px 16px}
   .master{grid-template-columns:auto minmax(0,1fr) 48px auto;flex-basis:100%}
+  input[type=range]{height:34px}
+  .vol .step{width:38px;padding:6px 0}
 }
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{transition:none !important;animation-duration:1.5s !important}}
 </style>
@@ -305,7 +310,7 @@ section{min-width:0}
     </div>
     <div class="master">
       <label for="master" id="masterLabel">Master</label>
-      <input type="range" min="0" max="100" id="master" aria-label="Master volume">
+      <span class="vol"><button class="step" data-vol="-5" data-target="all" aria-label="Master volume down 5 percent">−</button><input type="range" min="0" max="100" id="master" aria-label="Master volume"><button class="step" data-vol="5" data-target="all" aria-label="Master volume up 5 percent">+</button></span>
       <output id="masterVal" for="master"></output>
       <button id="btnMuteAll" aria-label="Mute all speakers">Mute</button>
       <span class="small master-note">No limiting: every slider reaches the speaker's own maximum.</span>
@@ -426,7 +431,7 @@ function deviceLabel() {
   return `${dev} (${br})`;
 }
 function authHeaders() { return {'X-Soundscape-Token': TOKEN || (DEVICE ? DEVICE.token : ''), 'X-Soundscape-Device': DEVICE ? DEVICE.id : ''}; }
-const PAGE_VERSION = '0.8.1', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.8.2', SERVER_VERSION = '__SERVER_VERSION__';
 const $ = id => document.getElementById(id);
 let status = null, jobId = null, pathWasUp = null;
 const STALE = SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__');
@@ -608,7 +613,7 @@ function render(s) {
   $('btnDown').disabled = !s.up;
   $('mediaNote').textContent = s.platform === 'mac' ? 'play, pause and skip in Music or Spotify on the Mac' : 'media keys through playerctl';
   $('masterLabel').textContent = s.master_label || 'Master';
-  if (s.volume != null && document.activeElement !== $('master')) {
+  if (s.volume != null && !sliderBusy($('master'))) {
     $('master').value = s.volume;
     $('masterVal').textContent = s.volume + '%';
   }
@@ -650,13 +655,15 @@ function renderSpeakers(s) {
         <div class="card-head"><span class="sdot" aria-hidden="true"></span><h3 class="name"></h3><span class="chip pos"></span><span class="st"></span></div>
         <div class="sink"></div>
         <div class="alert modewarn" hidden>${ICON.warn}<span>Headset mode: mono, phone quality, out of sync.</span><button data-act="reconnect">Reconnect</button></div>
-        <label class="ctl"><span>Volume</span><input type="range" min="0" max="100" class="v"><output class="vv"></output></label>
+        <div class="ctl"><span>Volume</span><span class="vol"><button class="step" data-vol="-5" aria-label="Volume down 5 percent">−</button><input type="range" min="0" max="100" class="v"><button class="step" data-vol="5" aria-label="Volume up 5 percent">+</button></span><output class="vv"></output></div>
         <div class="ctl delay"><span id="${id}-d">Delay</span><span class="seg" role="group" aria-labelledby="${id}-d"><button data-act="off" data-d="-5" aria-label="Delay minus 5 ms">−5</button><button data-act="off" data-d="-1" aria-label="Delay minus 1 ms">−1</button><output class="o"></output><button data-act="off" data-d="1" aria-label="Delay plus 1 ms">+1</button><button data-act="off" data-d="5" aria-label="Delay plus 5 ms">+5</button></span></div>
         <label class="ctl dist"><span>Distance</span><input type="text" class="dist" inputmode="decimal" placeholder="to the laptop: 1.2 m or 4 ft"><output class="dms"></output></label>
         <div class="buttons"><button data-act="mute" aria-pressed="false">Mute</button><button data-act="tone">Tone</button><button class="quiet danger" data-act="remove">Remove</button></div>`;
-      el.querySelector('.v').addEventListener('input', ev => { el.querySelector('.vv').textContent = ev.target.value + '%'; vol(sp.address, ev.target.value); });
+      bindSlider(el.querySelector('.v'), el.querySelector('.vv'), () => el.dataset.address);
       el.querySelector('input.dist').addEventListener('change', ev => dist(el.dataset.address, ev.target.value));
       el.addEventListener('click', ev => {
+        const stepBtn = ev.target.closest('button[data-vol]');
+        if (stepBtn) { stepVolume(el.querySelector('.v'), el.querySelector('.vv'), el.dataset.address, +stepBtn.dataset.vol); return; }
         const b = ev.target.closest('button[data-act]'); if (!b) return;
         const act = b.dataset.act, addr = el.dataset.address, name = el.querySelector('.name').textContent;
         if (act === 'off') off(addr, +b.dataset.d);
@@ -676,7 +683,7 @@ function renderSpeakers(s) {
     el.querySelector('.sink').textContent = sp.sink ? sp.sink + (sp.sample_rate ? ' · ' + (sp.sample_rate / 1000) + ' kHz' : '') : 'no audio device yet';
     el.querySelector('.modewarn').hidden = sp.mode !== 'headset';
     const v = el.querySelector('.v'); v.setAttribute('aria-label', 'Volume of ' + sp.name);
-    if (sp.volume != null && document.activeElement !== v) { v.value = sp.volume; el.querySelector('.vv').textContent = sp.volume + '%'; }
+    if (sp.volume != null && !sliderBusy(v)) { v.value = sp.volume; el.querySelector('.vv').textContent = sp.volume + '%'; }
     el.querySelector('.o').textContent = (sp.offset_ms || 0).toFixed(1) + ' ms';
     const di = el.querySelector('input.dist'); di.setAttribute('aria-label', 'Distance from the laptop to ' + sp.name);
     if (document.activeElement !== di) di.value = sp.distance_m != null ? fmtDist(sp.distance_m) : '';
@@ -774,7 +781,24 @@ function renderSync(m) {
 // ---------- controls
 const vt = {};
 const quiet = () => {};
-function vol(t, v) { clearTimeout(vt[t]); vt[t] = setTimeout(() => api('/api/volume', {target: t, percent: +v}).then(refresh).catch(quiet), 150); }
+const HOLD_MS = 3000;  // after you touch a slider, status polls leave it alone for this long (Bluetooth speakers report new volumes late)
+function sliderBusy(el) { return document.activeElement === el || (el._hold || 0) > Date.now(); }
+function bindSlider(input, out, target) {
+  const hold = () => { input._hold = Date.now() + HOLD_MS; };
+  for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'keydown']) input.addEventListener(ev, hold, {passive: true});
+  input.addEventListener('input', ev => { hold(); out.textContent = ev.target.value + '%'; vol(target(), ev.target.value); });
+  input.addEventListener('change', ev => { hold(); out.textContent = ev.target.value + '%'; vol(target(), ev.target.value, true); });
+}
+function stepVolume(input, out, target, delta) {
+  const v = Math.max(0, Math.min(100, (+input.value || 0) + delta));
+  input.value = v; input._hold = Date.now() + HOLD_MS; out.textContent = v + '%';
+  vol(target, v, true);
+}
+function vol(t, v, now) {
+  clearTimeout(vt[t]);
+  const send = () => api('/api/volume', {target: t, percent: Math.round(+v)}).then(refresh).catch(e => { if (!/^(error|another phone|this phone|the phone remote|token)/i.test(e.message || '')) toast('Volume not applied', 'the request did not reach Soundscape; check the Wi-Fi and try again', false); });
+  if (now) send(); else vt[t] = setTimeout(send, 150);
+}
 function off(t, d) { api('/api/offset', {target: t, delta_ms: d}).then(r => { toast('Delay set', Object.entries(r.offsets || {}).map(([k, v]) => `${k}: +${v.toFixed(1)} ms`).join('   '), false); refresh(); }).catch(quiet); }
 function mute(t) { api('/api/mute', {target: t, toggle: true}).then(r => { toast(r.muted ? 'Muted' : 'Unmuted', '', false); refresh(); }).catch(quiet); }
 function media(a) { api('/api/media', {action: a}).then(r => { if (r.message) toast('Media', r.message, false); }).catch(quiet); }
@@ -808,7 +832,7 @@ $('found').addEventListener('click', ev => { const b = ev.target.closest('button
 async function addSpeaker(addr) {
   const pos = $('pos-' + addr.replace(/:/g, '')).value.trim();
   const j = await job('/api/add', {address: addr, position: pos || null});
-  if (j && j.state === 'done') { const box = $('found'); box.className = 'empty'; box.innerHTML = 'Added. Scan again to add another, or press Bring up.'; }
+  if (j && j.state === 'done') { const box = $('found'); box.className = 'empty'; box.innerHTML = status && status.up ? 'Added and joined the output. Scan again to add another.' : 'Added. Scan again to add another, or press Bring up.'; }
 }
 async function doctor() {
   const box = $('checks'); box.innerHTML = '<div class="empty row"><span class="spin"></span> running checks…</div>';
@@ -847,7 +871,8 @@ $('btnDown').addEventListener('click', () => job('/api/down', {}));
 $('btnTest').addEventListener('click', () => job('/api/test', {}));
 $('btnQuit').addEventListener('click', quitApp);
 $('btnMuteAll').addEventListener('click', () => mute('all'));
-$('master').addEventListener('input', ev => { $('masterVal').textContent = ev.target.value + '%'; vol('all', ev.target.value); });
+bindSlider($('master'), $('masterVal'), () => 'all');
+document.querySelector('.master').addEventListener('click', ev => { const b = ev.target.closest('button[data-vol]'); if (b) stepVolume($('master'), $('masterVal'), 'all', +b.dataset.vol); });
 $('btnCal').addEventListener('click', calibrate);
 $('btnReset').addEventListener('click', resetTrims);
 $('btnScan').addEventListener('click', scan);

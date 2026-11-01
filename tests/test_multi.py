@@ -163,3 +163,37 @@ def test_four_speakers_up(runner, world, paths):
     assert len(state.outputs) == 4 and s.paths.engine_conf.read_text().count("filter-chain") == 4
     assert [sp["name"] for sp in s.status()["speakers"]] == ["Kitchen", "Living Room", "Garage", "Patio"]
     assert World  # fixture class referenced for readers
+
+
+def test_adding_a_speaker_while_up_joins_it_at_once(runner, world, paths):
+    from soundscape.session import Session
+    from tests.conftest import make_config
+    world.two_speakers()
+    world.add_device(MAC_C, "Patio", paired=True, trusted=True)
+    s = Session(runner=runner, paths=paths, config=make_config(), sleep=lambda _s: None)
+    s.up()
+    assert s.state().output_for(MAC_C) is None
+    logs = []
+    s.log = logs.append
+    s.add_speaker(MAC_C, position="patio")
+    assert s.state().output_for(MAC_C) is not None  # rebuilt: the third speaker plays without pressing Rebuild
+    assert any("rebuilding the output to include Patio" in line for line in logs)
+
+
+def test_watchdog_rebuilds_when_a_configured_speaker_is_left_out(runner, world, paths):
+    from soundscape.config import Speaker
+    from soundscape.session import Session
+    from tests.conftest import make_config
+    world.two_speakers()
+    world.add_device(MAC_C, "Patio", paired=True, trusted=True, connected=True)
+    s = Session(runner=runner, paths=paths, config=make_config(), sleep=lambda _s: None)
+    s.up()
+    s.config.add(Speaker(MAC_C, "Patio", "patio"))  # added behind the engine's back (e.g. by the CLI on another shell)
+    s.save_config()
+    logs = []
+    s.log = logs.append
+    s.ensure_up()
+    assert s.state().output_for(MAC_C) is not None
+    assert any("connected but not in the output; rebuilding" in line for line in logs)
+    s.ensure_up()
+    assert sum("rebuilding" in line for line in logs) == 1  # settled: no rebuild loop
