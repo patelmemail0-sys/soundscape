@@ -41,6 +41,13 @@ The card is in the wrong profile (headset/HFP or off). Check
 (PulseAudio). WirePlumber may also need `bluez5.roles = [ a2dp_sink ]` in
 `~/.config/wireplumber/bluetooth.lua.d/` to stop it choosing headset mode.
 
+**It keeps trying to connect speakers I no longer use, or ignores the ones I have connected**
+
+Bring-up now uses whatever is connected: a configured speaker that is off is skipped after one
+attempt and joins when it comes back, and a speaker you connect in the Bluetooth menu is added
+by itself (unless *Use the speakers connected to this Mac* is off). Remove a speaker you no
+longer own with its Remove button or `soundscape remove <name>`.
+
 **Only one speaker ever connects**
 Some older or very cheap Bluetooth adapters cannot hold two A2DP links. Try a USB Bluetooth
 5.x adapter (CSR8510-based dongles are known to struggle). On a Raspberry Pi, a USB adapter

@@ -645,3 +645,14 @@ def test_media_keys_drive_music_or_spotify_on_mac(runner, tmp_path, monkeypatch)
     runner.on(("osascript", "-e", 'tell application "Music" to playpause'), "")
     body = app.handle("POST", "/api/media", {"action": "play-pause"})[1]
     assert ["osascript", "-e", 'tell application "Music" to playpause'] in runner.calls and body["ok"]
+
+
+def test_mac_headphones_are_audio_but_never_adopted():
+    from soundscape.bluez import Device
+    from soundscape.mac.bluetooth import icon_for_minor_type
+    assert icon_for_minor_type("Speaker") == "audio-speakers" and icon_for_minor_type("Headphones") == "audio-headphones"
+    assert icon_for_minor_type("Mouse") == ""
+    pods = Device(path="mac:x", address="AA:BB:CC:DD:EE:09", name="AirPods", icon=icon_for_minor_type("Headphones"))
+    assert pods.is_audio_sink and pods.is_headphones and not pods.is_speaker
+    bose = Device(path="mac:y", address="AA:BB:CC:DD:EE:08", name="Bose S1 Pro", icon=icon_for_minor_type("Speaker"))
+    assert bose.is_speaker

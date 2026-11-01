@@ -218,6 +218,11 @@ soundscape volume patio 60
 soundscape offset kitchen 4.5
 ```
 
+Speakers you connect in the Mac's Bluetooth menu join the group by themselves (the *Use the
+speakers connected to this Mac* setting, on by default; headphones are only offered, never
+adopted). A configured speaker that is off is skipped at bring-up and joins as soon as it
+connects again; `soundscape remove <speaker>` forgets one for good.
+
 `soundscape setup` asks "add another speaker?" after the first two and lets you name each
 spot. `sync --auto` calibrates any number of speakers in one pass: it plays one chirp per
 speaker, three seconds apart, and delays everyone to match the slowest. `test` plays a rising

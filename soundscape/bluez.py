@@ -75,6 +75,15 @@ class Device:
     def is_audio_sink(self) -> bool:
         return A2DP_SINK_UUID in {u.lower() for u in self.uuids} or self.icon in AUDIO_ICONS
 
+    @property
+    def is_headphones(self) -> bool:
+        return self.icon in ("audio-headphones", "audio-headset")
+
+    @property
+    def is_speaker(self) -> bool:
+        """An audio device that is not a pair of headphones: what Soundscape adopts on its own."""
+        return self.is_audio_sink and not self.is_headphones
+
 
 def parse_managed_objects(payload: Any) -> Dict[str, Dict[str, Dict[str, Any]]]:
     data = unwrap(payload)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soundscape-bt"
-version = "0.8.2"
+version = "0.9.0"
 description = "Play one audio source through two Bluetooth speakers at once, in sync, from a single Linux machine."
 readme = "README.md"
 license = { text = "MIT" }

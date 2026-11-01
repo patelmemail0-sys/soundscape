@@ -94,21 +94,64 @@ class Session:
         return self._engine
 
     # -- speakers --------------------------------------------------------
-    def connect_speakers(self, speakers: Optional[List[Speaker]] = None) -> List[Bound]:
+    def connect_speakers(self, speakers: Optional[List[Speaker]] = None, tolerant: bool = False) -> List[Bound]:
+        """Connect the speakers and wait for their audio sinks. ``tolerant`` (bring-up) skips a speaker
+        that is off or out of range after one attempt instead of failing the whole group; it joins
+        later, when the watchdog sees it connected."""
         speakers = speakers if speakers is not None else self.config.speakers
         if not speakers:
             raise ConfigError("no speakers configured", "run `soundscape setup` or `soundscape add <address>`")
         bound: List[Bound] = []
+        skipped: List[Speaker] = []
+        reasons: List[str] = []
         for sp in speakers:
-            self.bluez.ensure_connected(sp.address, log=self.log, connect_timeout=self.config.connect_timeout_s)
-            sink = self._wait_for_bt_sink(sp)
-            if sp.name == "" :
+            try:
+                self.bluez.ensure_connected(sp.address, log=self.log, connect_timeout=self.config.connect_timeout_s,
+                                            retries=0 if tolerant else 2)
+                sink = self._wait_for_bt_sink(sp)
+            except (BluetoothError, AudioError) as exc:
+                if not tolerant:
+                    raise
+                reason = f"{sp.label}: {exc.message}" + (f" ({exc.hint})" if exc.hint else "")
+                self.log(f"{sp.label} is not available; continuing without it. {reason}")
+                skipped.append(sp)
+                reasons.append(reason)
+                continue
+            if sp.name == "":
                 dev = self.bluez.device(sp.address)
                 if dev and dev.label != sp.address:
                     sp.name = dev.label
             bound.append(Bound(sp, sink))
             self.log(f"{sp.position}: {sp.label} -> {sink.name}")
+        if not bound:
+            raise BluetoothError("none of the configured speakers could be used: " + "; ".join(reasons),
+                                 "switch them on, or scan and add the speakers you have; `soundscape remove` forgets old ones")
+        if skipped:
+            self.log(f"skipped {', '.join(s.label for s in skipped)}: they join as soon as they connect")
         return bound
+
+    def _adopt_connected(self) -> List[Speaker]:
+        """With follow_connected on, a speaker that is connected to this machine but not yet part of
+        the group is added on the spot (headphones are offered on the dashboard but never adopted)."""
+        if not self.config.follow_connected:
+            return []
+        try:
+            devices = self.bluez.devices()
+        except SoundscapeError:
+            return []
+        known = {sp.address for sp in self.config.speakers}
+        added: List[Speaker] = []
+        for dev in devices:
+            if dev.connected and dev.is_speaker and dev.address not in known:
+                sp = Speaker(address=dev.address, name=dev.label if dev.label != dev.address else "",
+                             position=self.config.next_position())
+                self.config.add(sp)
+                known.add(sp.address)
+                added.append(sp)
+                self.log(f"{sp.label} is connected to this machine; added as {sp.position}")
+        if added:
+            self.save_config()
+        return added
 
     def _wait_for_bt_sink(self, sp: Speaker) -> Sink:
         deadline = time.monotonic() + self.config.sink_timeout_s
@@ -145,6 +188,7 @@ class Session:
             lock.close()
 
     def _up(self, rebuild: bool = True) -> EngineState:
+        self._adopt_connected()
         if len(self.config.speakers) < 2:
             raise ConfigError(f"{len(self.config.speakers)} speaker(s) configured; Soundscape needs at least two",
                               "run `soundscape setup` or `soundscape add <address> --position right`")
@@ -156,7 +200,9 @@ class Session:
                 return existing
             self._down()
         self.log(f"sound server: {self.server().flavour} {self.server().server_version}".rstrip())
-        bound = self.connect_speakers()
+        bound = self.connect_speakers(tolerant=True)
+        if len(bound) == 1:
+            self.log(f"only {bound[0].speaker.label} is connected; playing through it alone until the others connect")
         bound = self._protect_a2dp(bound)
         engine = self.engine()
         self.log(f"building virtual output '{self.config.sink_name}' with the {engine.name} engine ...")
@@ -316,6 +362,9 @@ class Session:
         state = self.state()
         if state:
             self.pin_microphone()
+            if self._adopt_connected():
+                self.log("rebuilding to include the newly connected speaker")
+                return self.up(rebuild=True)
             problems = self.engine(state).missing(state)
             if not problems:
                 left_out = self._connected_but_not_in(state)
@@ -447,6 +496,9 @@ class Session:
             devices = {d.address: d for d in self.bluez.devices()}
         except SoundscapeError as exc:
             out["bluetooth_error"] = exc.message
+        configured = {sp.address for sp in self.config.speakers}
+        out["unadded"] = [{"address": d.address, "name": d.label, "headphones": d.is_headphones}
+                          for d in devices.values() if d.connected and d.is_audio_sink and d.address not in configured]
         if state:
             out["engine"] = state.engine
             try:

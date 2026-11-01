@@ -186,9 +186,11 @@ def test_watchdog_rebuilds_when_a_configured_speaker_is_left_out(runner, world, 
     from tests.conftest import make_config
     world.two_speakers()
     world.add_device(MAC_C, "Patio", paired=True, trusted=True, connected=True)
-    s = Session(runner=runner, paths=paths, config=make_config(), sleep=lambda _s: None)
+    cfg = make_config()
+    cfg.follow_connected = False  # not adopted automatically here: the test adds it by hand behind the engine's back
+    s = Session(runner=runner, paths=paths, config=cfg, sleep=lambda _s: None)
     s.up()
-    s.config.add(Speaker(MAC_C, "Patio", "patio"))  # added behind the engine's back (e.g. by the CLI on another shell)
+    s.config.add(Speaker(MAC_C, "Patio", "patio"))  # e.g. by the CLI in another shell
     s.save_config()
     logs = []
     s.log = logs.append
@@ -197,3 +199,52 @@ def test_watchdog_rebuilds_when_a_configured_speaker_is_left_out(runner, world, 
     assert any("connected but not in the output; rebuilding" in line for line in logs)
     s.ensure_up()
     assert sum("rebuilding" in line for line in logs) == 1  # settled: no rebuild loop
+
+
+def test_up_skips_a_speaker_that_is_off_and_adds_it_back_later(runner, world, paths):
+    from soundscape.config import Speaker
+    from soundscape.session import Session
+    from tests.conftest import make_config
+    world.two_speakers()
+    cfg = make_config()
+    cfg.speakers.append(Speaker(MAC_C, "Patio", "patio"))  # configured, but the speaker is off (BlueZ has never seen it)
+    logs = []
+    s = Session(runner=runner, paths=paths, config=cfg, log=logs.append, sleep=lambda _s: None)
+    state = s.up()
+    assert [o.position for o in state.outputs] == ["left", "right"]
+    assert any("Patio is not available" in line for line in logs) and any("skipped Patio" in line for line in logs)
+    world.add_device(MAC_C, "Patio", paired=True, trusted=True, connected=True)  # switched on and auto-connected
+    s.ensure_up()
+    assert [o.position for o in s.state().outputs] == ["left", "right", "patio"]
+
+
+def test_up_adopts_speakers_connected_to_the_machine(runner, world, paths):
+    from soundscape.session import Session
+    from tests.conftest import make_config
+    world.two_speakers()
+    world.add_device(MAC_C, "Patio", paired=True, trusted=True, connected=True)
+    s = Session(runner=runner, paths=paths, config=make_config(), sleep=lambda _s: None)
+    state = s.up()
+    assert [o.position for o in state.outputs] == ["left", "right", "speaker3"]
+    assert [sp.address for sp in s.config.speakers][2] == MAC_C and s.config.speakers[2].name == "Patio"
+    st = s.status()
+    assert st["unadded"] == []
+    s.down()
+    # with the setting off, a connected speaker is only offered
+    s.remove_speaker("speaker3")
+    s.config.follow_connected = False
+    assert [o.position for o in s.up().outputs] == ["left", "right"]
+    assert s.status()["unadded"] == [{"address": MAC_C, "name": "Patio", "headphones": False}]
+
+
+def test_up_with_every_speaker_off_fails_clearly(runner, world, paths):
+    from soundscape.errors import BluetoothError
+    from soundscape.session import Session
+    from tests.conftest import make_config
+    world.two_speakers()
+    world.fail_connect.add(MAC_A)
+    world.fail_connect.add(MAC_B)
+    s = Session(runner=runner, paths=paths, config=make_config(), sleep=lambda _s: None)
+    with pytest.raises(BluetoothError) as exc:
+        s.up()
+    assert "none of the configured speakers" in exc.value.message

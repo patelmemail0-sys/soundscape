@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0 - 2026-11-01
+
+* Bring-up follows what is connected. A configured speaker that is off or out of range is
+  skipped after one attempt instead of blocking the whole group for minutes, and it joins as
+  soon as the watchdog sees it connected. A speaker connected to the machine but not yet in
+  the group is adopted on the spot (`follow_connected`, on by default; headphones are only
+  offered on the dashboard, never adopted). The dashboard lists connected-but-unadded
+  devices under Add a speaker with an Add button, and bring-up fails clearly only when none
+  of the speakers can be reached.
+
 ## 0.8.2 - 2026-10-31
 
 * Volume from a phone. Touch-dragged sliders never take focus on iOS, so the status refresh

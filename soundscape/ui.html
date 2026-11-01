@@ -346,6 +346,7 @@ input[type=range]{touch-action:pan-y}
     <section aria-labelledby="hAdd">
       <div class="sec-head"><h2 id="hAdd">Add a speaker</h2><span class="meta"><button id="btnScan">Scan 10 s</button></span></div>
       <p class="lead">Put the speaker in pairing mode (hold its Bluetooth button), scan, then add it with a name for where it stands. The name is only a label: every speaker plays the full mix, and left and right split channels only when the advanced stereo-split flag is on.</p>
+      <div class="found" id="unadded" style="margin-top:10px" hidden></div>
       <div id="found" class="empty" style="margin-top:10px">Speakers found by a scan appear here.</div>
     </section>
 
@@ -375,6 +376,7 @@ input[type=range]{touch-action:pan-y}
       <div class="setting"><div class="txt"><label for="cfgEngine">Engine</label><span class="small" id="engineHint">auto picks the best engine for this machine</span></div><select id="cfgEngine"></select></div>
       <div class="setting"><div class="txt"><label for="cfgPin">Keep the system microphone on the built-in mic</label><span class="small" id="micNote">stops speakers from dropping into headset mode</span></div><input type="checkbox" class="switch" role="switch" id="cfgPin"></div>
       <div class="setting"><div class="txt"><label for="cfgComp">Automatic latency compensation</label><span class="small">lets the engine correct drift between speakers</span></div><input type="checkbox" class="switch" role="switch" id="cfgComp"></div>
+      <div class="setting"><div class="txt"><label for="cfgFollow">Use the speakers connected to this Mac</label><span class="small">a speaker you connect in the Bluetooth menu joins the group by itself; one that is off is skipped until it is back; headphones are only offered</span></div><input type="checkbox" class="switch" role="switch" id="cfgFollow"></div>
       <div class="setting"><div class="txt"><label for="cfgDefault">Make Soundscape the default output while up</label><span class="small">every app plays through all speakers</span></div><input type="checkbox" class="switch" role="switch" id="cfgDefault"></div>
     </section>
 
@@ -431,7 +433,7 @@ function deviceLabel() {
   return `${dev} (${br})`;
 }
 function authHeaders() { return {'X-Soundscape-Token': TOKEN || (DEVICE ? DEVICE.token : ''), 'X-Soundscape-Device': DEVICE ? DEVICE.id : ''}; }
-const PAGE_VERSION = '0.8.2', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.9.0', SERVER_VERSION = '__SERVER_VERSION__';
 const $ = id => document.getElementById(id);
 let status = null, jobId = null, pathWasUp = null;
 const STALE = SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__');
@@ -619,7 +621,7 @@ function render(s) {
   }
   $('btnMuteAll').textContent = s.muted ? 'Unmute' : 'Mute';
   $('btnMuteAll').setAttribute('aria-pressed', s.muted ? 'true' : 'false');
-  renderSummary(s); renderSpeakers(s); renderPath(s); renderSettings(s); renderSync(s.last_sync); renderRemote(s);
+  renderSummary(s); renderSpeakers(s); renderPath(s); renderSettings(s); renderSync(s.last_sync); renderRemote(s); renderUnadded(s);
   if (s.job && !jobId) { jobId = s.job.id; setBusy(true); pollJob(); }
 }
 function setFact(id, text, cls) { const el = $(id); el.textContent = text; el.className = 'v' + (cls ? ' ' + cls : ''); }
@@ -728,6 +730,18 @@ function renderSettings(s) {
   $('micNote').textContent = mic.pinned ? (mic.ok ? 'pinned to ' + mic.pinned : 'not pinned right now') : 'stops speakers from dropping into headset mode';
   $('cfgComp').checked = !!c.latency_compensate;
   $('cfgDefault').checked = !!c.set_default_sink;
+  $('cfgFollow').checked = c.follow_connected !== false;
+}
+function renderUnadded(s) {
+  const box = $('unadded'), list = s.unadded || [];
+  box.hidden = !list.length;
+  if (!list.length) { box.innerHTML = ''; return; }
+  const key = list.map(d => d.address + d.name).join('|');
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.innerHTML = list.map(d => `<div class="card"><div class="card-head"><h3 class="name">${esc(d.name)}</h3><span class="st ok">connected to this Mac</span></div>
+    <div class="sink">${d.headphones ? 'headphones: added only if you ask' : 'not part of Soundscape yet'}</div>
+    <div class="row"><input type="text" placeholder="where it stands (kitchen, left…)" aria-label="Position name for ${esc(d.name)}" id="pos-${d.address.replace(/:/g, '')}"><button class="pri" data-add="${esc(d.address)}">Add</button></div></div>`).join('');
 }
 function renderRemote(s) {
   const sec = document.querySelector('section[aria-labelledby="hRemote"]');
@@ -828,7 +842,7 @@ async function scan() {
     <div class="sink">${esc(d.address)}${d.rssi != null ? ' · signal ' + d.rssi + ' dBm' : ''}</div>
     <div class="row"><input type="text" placeholder="where it stands (kitchen, left…)" aria-label="Position name for ${esc(d.name)}" id="pos-${d.address.replace(/:/g, '')}"><button class="pri" data-add="${esc(d.address)}">Add</button></div></div>`).join('');
 }
-$('found').addEventListener('click', ev => { const b = ev.target.closest('button[data-add]'); if (b) addSpeaker(b.dataset.add); });
+for (const id of ['found', 'unadded']) $(id).addEventListener('click', ev => { const b = ev.target.closest('button[data-add]'); if (b) addSpeaker(b.dataset.add); });
 async function addSpeaker(addr) {
   const pos = $('pos-' + addr.replace(/:/g, '')).value.trim();
   const j = await job('/api/add', {address: addr, position: pos || null});
@@ -881,6 +895,7 @@ $('cfgEngine').addEventListener('change', ev => cfg('engine', ev.target.value));
 $('cfgPin').addEventListener('change', ev => cfg('pin_microphone', ev.target.checked));
 $('cfgComp').addEventListener('change', ev => cfg('latency_compensate', ev.target.checked));
 $('cfgDefault').addEventListener('change', ev => cfg('set_default_sink', ev.target.checked));
+$('cfgFollow').addEventListener('change', ev => cfg('follow_connected', ev.target.checked));
 $('cfgRemote').addEventListener('change', ev => cfg('remote', ev.target.checked));
 $('phones').addEventListener('click', ev => { const b = ev.target.closest('button[data-forget]'); if (!b) return; if (!confirm('Forget this phone? It will need to scan the code again.')) return; api('/api/forget', {device_id: b.dataset.forget}).then(() => { toast('Phone forgotten', '', false); refresh(); }).catch(quiet); });
 $('mediaRow').addEventListener('click', ev => { const b = ev.target.closest('button[data-media]'); if (b) media(b.dataset.media); });

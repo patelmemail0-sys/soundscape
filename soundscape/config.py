@@ -137,6 +137,7 @@ class Config:
     remote: bool = False  # let paired phones on the local network use the dashboard; switchable live
     remote_token: str = ""  # legacy (0.7.x protected the network side with this token); kept so old configs load
     ui_port: int = 8787
+    follow_connected: bool = True  # speakers connected to this machine join the group by themselves (headphones never do)
     connect_timeout_s: float = 25.0
     sink_timeout_s: float = 15.0
 
@@ -224,7 +225,7 @@ class Config:
     # -- settings ----------------------------------------------------------
     SETTABLE = ("engine", "stereo_split", "latency_compensate", "set_default_sink", "resample_quality",
                 "pulse_resample_method", "description", "connect_timeout_s", "sink_timeout_s",
-                "pin_microphone", "microphone", "remote", "remote_token", "ui_port")
+                "pin_microphone", "microphone", "remote", "remote_token", "ui_port", "follow_connected")
 
     def set_option(self, key: str, raw: object) -> object:
         """Set a scalar option from user input with type coercion; returns the stored value."""

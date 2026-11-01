@@ -216,9 +216,10 @@ def test_daemon_backs_off_when_speakers_unavailable(runner, world, tmp_path, mon
 
     from soundscape import cli as _cli
     world.two_speakers()
-    world.fail_connect.add(MAC_B)
+    world.fail_connect.add(MAC_A)
+    world.fail_connect.add(MAC_B)  # both unreachable: nothing to play through, so the daemon backs off
     root = tmp_path / "root"
-    run(runner, root, "add", MAC_A)
+    run(runner, root, "add", MAC_A, "--no-connect")
     run(runner, root, "add", MAC_B, "--no-connect")
     handlers = {}
     monkeypatch.setattr(_signal, "signal", lambda num, fn: handlers.__setitem__(num, fn))

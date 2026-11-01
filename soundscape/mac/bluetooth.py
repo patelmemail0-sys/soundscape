@@ -19,6 +19,15 @@ from ..runner import Runner
 Log = Callable[[str], None]
 AUDIO_MINOR_TYPES = {"speaker", "headphones", "headset", "loudspeaker", "portable audio", "hifi audio",
                      "car audio", "video display and loudspeaker"}
+HEADPHONE_MINOR_TYPES = {"headphones", "headset"}
+
+
+def icon_for_minor_type(minor: str) -> str:
+    """Map system_profiler's device class to the BlueZ-style icon names the rest of the code reads."""
+    minor = minor.lower()
+    if minor in HEADPHONE_MINOR_TYPES:
+        return "audio-headphones"
+    return "audio-speakers" if minor in AUDIO_MINOR_TYPES else ""
 BLUEUTIL_HINT = "brew install blueutil   (lets Soundscape connect speakers itself; otherwise click them in the Bluetooth menu)"
 
 
@@ -113,7 +122,7 @@ class MacBluetooth:
             minor = p["minor_type"].lower()
             merged[mac] = Device(path=f"mac:{mac}", address=mac, name=p["name"], alias=p["name"], paired=True,
                                  trusted=True, connected=p["connected"],
-                                 icon="audio-card" if minor in AUDIO_MINOR_TYPES else "")
+                                 icon=icon_for_minor_type(minor))
         if self.has_blueutil():
             res = self._blueutil("--paired", "--format", "json", timeout=15)
             if res.ok:

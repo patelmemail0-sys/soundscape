@@ -2,7 +2,7 @@ import pytest
 
 from soundscape.config import Speaker
 from soundscape.engine import EngineState
-from soundscape.errors import AudioError, ConfigError
+from soundscape.errors import AudioError, ConfigError, SoundscapeError
 from soundscape.session import Session
 from tests.conftest import MAC_A, MAC_B, make_config
 
@@ -49,9 +49,18 @@ def test_up_requires_two_speakers(runner, world, paths):
 
 def test_no_sink_after_connect_gives_profile_hint(session, world):
     world.no_sink_for.add(MAC_B)
-    with pytest.raises(AudioError) as exc:
+    logs = []
+    session.log = logs.append
+    state = session.up()  # the stuck speaker is skipped with the hint; the group plays on without it
+    assert [o.position for o in state.outputs] == ["left"]
+    assert any("a2dp" in line.lower() and "Living Room" in line for line in logs)
+    session.down()
+    world.no_sink_for.add(MAC_A)
+    world.devices[MAC_A]["connected"] = False
+    world._drop_bt_sink(MAC_A)
+    with pytest.raises(SoundscapeError) as exc:  # nothing usable at all: the reasons travel with the error
         session.up()
-    assert "a2dp" in exc.value.hint.lower()
+    assert "none of the configured speakers" in exc.value.message and "a2dp" in exc.value.message.lower()
 
 
 def test_engine_falls_back_without_delay_filters(session, world):
