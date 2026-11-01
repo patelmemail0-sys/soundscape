@@ -376,6 +376,7 @@ input[type=range]{touch-action:pan-y}
       <div class="setting"><div class="txt"><label for="cfgEngine">Engine</label><span class="small" id="engineHint">auto picks the best engine for this machine</span></div><select id="cfgEngine"></select></div>
       <div class="setting"><div class="txt"><label for="cfgPin">Keep the system microphone on the built-in mic</label><span class="small" id="micNote">stops speakers from dropping into headset mode</span></div><input type="checkbox" class="switch" role="switch" id="cfgPin"></div>
       <div class="setting"><div class="txt"><label for="cfgComp">Automatic latency compensation</label><span class="small">lets the engine correct drift between speakers</span></div><input type="checkbox" class="switch" role="switch" id="cfgComp"></div>
+      <div class="setting"><div class="txt"><label for="cfgBuffer">Relay block size</label><span class="small">bigger blocks stop choppy audio with three or more speakers; all speakers are delayed equally, so music is unaffected</span></div><select id="cfgBuffer"><option value="0">auto</option><option value="1024">1024 frames (21 ms)</option><option value="2048">2048 frames (43 ms)</option><option value="4096">4096 frames (85 ms)</option></select></div>
       <div class="setting"><div class="txt"><label for="cfgFollow">Use the speakers connected to this Mac</label><span class="small">a speaker you connect in the Bluetooth menu joins the group by itself; one that is off is skipped until it is back; headphones are only offered</span></div><input type="checkbox" class="switch" role="switch" id="cfgFollow"></div>
       <div class="setting"><div class="txt"><label for="cfgDefault">Make Soundscape the default output while up</label><span class="small">every app plays through all speakers</span></div><input type="checkbox" class="switch" role="switch" id="cfgDefault"></div>
     </section>
@@ -433,7 +434,7 @@ function deviceLabel() {
   return `${dev} (${br})`;
 }
 function authHeaders() { return {'X-Soundscape-Token': TOKEN || (DEVICE ? DEVICE.token : ''), 'X-Soundscape-Device': DEVICE ? DEVICE.id : ''}; }
-const PAGE_VERSION = '0.9.0', SERVER_VERSION = '__SERVER_VERSION__';
+const PAGE_VERSION = '0.9.1', SERVER_VERSION = '__SERVER_VERSION__';
 const $ = id => document.getElementById(id);
 let status = null, jobId = null, pathWasUp = null;
 const STALE = SERVER_VERSION !== PAGE_VERSION && !SERVER_VERSION.startsWith('__');
@@ -731,6 +732,8 @@ function renderSettings(s) {
   $('cfgComp').checked = !!c.latency_compensate;
   $('cfgDefault').checked = !!c.set_default_sink;
   $('cfgFollow').checked = c.follow_connected !== false;
+  const buf = $('cfgBuffer'); if (document.activeElement !== buf) buf.value = String(c.relay_buffer || 0);
+  buf.closest('.setting').hidden = s.platform !== 'mac';
 }
 function renderUnadded(s) {
   const box = $('unadded'), list = s.unadded || [];
@@ -896,6 +899,7 @@ $('cfgPin').addEventListener('change', ev => cfg('pin_microphone', ev.target.che
 $('cfgComp').addEventListener('change', ev => cfg('latency_compensate', ev.target.checked));
 $('cfgDefault').addEventListener('change', ev => cfg('set_default_sink', ev.target.checked));
 $('cfgFollow').addEventListener('change', ev => cfg('follow_connected', ev.target.checked));
+$('cfgBuffer').addEventListener('change', ev => cfg('relay_buffer', +ev.target.value));
 $('cfgRemote').addEventListener('change', ev => cfg('remote', ev.target.checked));
 $('phones').addEventListener('click', ev => { const b = ev.target.closest('button[data-forget]'); if (!b) return; if (!confirm('Forget this phone? It will need to scan the code again.')) return; api('/api/forget', {device_id: b.dataset.forget}).then(() => { toast('Phone forgotten', '', false); refresh(); }).catch(quiet); });
 $('mediaRow').addEventListener('click', ev => { const b = ev.target.closest('button[data-media]'); if (b) media(b.dataset.media); });

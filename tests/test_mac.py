@@ -13,7 +13,7 @@ import pytest
 from soundscape import engine as engine_mod
 from soundscape.bluez import Device
 from soundscape.config import Config, Speaker
-from soundscape.errors import AudioError, BluetoothError
+from soundscape.errors import AudioError, BluetoothError, ConfigError
 from soundscape.mac import coreaudio as ca
 from soundscape.mac.audio import MacAudio, device_to_sink
 from soundscape.mac.bluetooth import MacBluetooth, parse_blueutil_json, parse_system_profiler
@@ -449,6 +449,7 @@ def test_relay_engine_spawns_process_and_controls_it(runner, tmp_path, monkeypat
     assert any("raised from 50% to 100%" in m for m in s.logs)
     argv = [p for p in runner.procs if "-m" in p.argv][0].argv
     assert "soundscape.mac.ioproc" in argv and f"left:{UID_A}:0.000" in argv and f"right:{UID_B}:0.000" in argv
+    assert argv[argv.index("--buffer") + 1] == "1024" and any("relay block: 1024 frames" in m for m in s.logs)
     assert hal.default_output == hal.id_for_uid(UID_BH)
     s.set_offset("right", 12)
     assert any(c == f"delay {UID_B} 12.000" for c in sent)
@@ -656,3 +657,16 @@ def test_mac_headphones_are_audio_but_never_adopted():
     assert pods.is_audio_sink and pods.is_headphones and not pods.is_speaker
     bose = Device(path="mac:y", address="AA:BB:CC:DD:EE:08", name="Bose S1 Pro", icon=icon_for_minor_type("Speaker"))
     assert bose.is_speaker
+
+
+def test_relay_block_size_rule(monkeypatch):
+    from soundscape.mac.engine import relay_block_size
+    monkeypatch.delenv("SOUNDSCAPE_RELAY_BUFFER", raising=False)
+    assert relay_block_size(Config(), 2) == 1024 and relay_block_size(Config(), 3) == 2048
+    assert relay_block_size(Config(relay_buffer=4096), 3) == 4096
+    monkeypatch.setenv("SOUNDSCAPE_RELAY_BUFFER", "512")
+    assert relay_block_size(Config(relay_buffer=4096), 3) == 512
+    cfg = Config()
+    assert cfg.set_option("relay_buffer", "2048") == 2048 and cfg.set_option("relay_buffer", "0") == 0
+    with pytest.raises(ConfigError):
+        cfg.set_option("relay_buffer", "100")

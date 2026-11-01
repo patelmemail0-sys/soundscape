@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 - 2026-11-01
+
+* Relay block size is a setting (`relay_buffer`, in the dashboard's Settings): auto now
+  picks 2048 frames for three or more speakers (1024 for two), the number the mixer needs to
+  keep three Bluetooth streams free of dropouts; 4096 is there for busy machines. Applies on
+  the next Rebuild; the bring-up log says which block size is in use.
+
 ## 0.9.0 - 2026-11-01
 
 * Bring-up follows what is connected. A configured speaker that is off or out of range is

@@ -168,10 +168,14 @@ and run `soundscape up` again; the relay engine is picked automatically.
 macOS asks for microphone permission per app the first time; allow it for your terminal in
 System Settings > Privacy & Security > Microphone and run `soundscape sync --auto` again.
 
-**Crackle with the relay engine**
-Increase the buffer: `soundscape config set engine relay` is already in effect; set a larger
-block with `SOUNDSCAPE_RELAY_BUFFER=2048 soundscape up` (doubles latency to about 43 ms,
-both speakers equally). Closing CPU-heavy apps helps too.
+**Crackle or choppy audio with the relay engine**
+Give the mixer bigger blocks: *Relay block size* in the dashboard's Settings (or
+`soundscape config set relay_buffer 2048`, or 4096), then Rebuild. Auto picks 1024 frames
+(21 ms) for two speakers and 2048 (43 ms) for three or more; every speaker is delayed equally,
+so music is unaffected. If it is still choppy, try the aggregate engine (no Python in the audio
+path, but no sync trims): if that is clean, the Mac was too busy; if it still drops out, the
+Bluetooth radio is the limit: keep the speakers within a few metres, prefer 5 GHz Wi-Fi so the
+2.4 GHz band is free, and move USB 3 hubs and drives away from the Mac.
 
 **AirPlay from the iPhone stops or stutters**
 AirPlay Receiver needs both devices on the same Wi-Fi and the Mac awake. Disable "Put hard

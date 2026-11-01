@@ -117,6 +117,16 @@ class AggregateEngine(Engine):
         raise AudioError("the aggregate engine cannot delay one speaker", BLACKHOLE_HINT + "; then `soundscape up` again")
 
 
+def relay_block_size(cfg: Config, outputs: int) -> int:
+    """Frames per mixer block: the SOUNDSCAPE_RELAY_BUFFER variable, else the relay_buffer setting,
+    else 1024 for two speakers and 2048 for three or more (bigger blocks give the Python mixer the
+    headroom several Bluetooth streams need; every speaker is delayed equally, so music is unaffected)."""
+    env = os.environ.get("SOUNDSCAPE_RELAY_BUFFER")
+    if env and env.isdigit():
+        return int(env)
+    return int(cfg.relay_buffer) or (2048 if outputs >= 3 else 1024)
+
+
 class RelayEngine(Engine):
     name = "relay"
     MARKER = "soundscape.mac.ioproc"
@@ -157,9 +167,9 @@ class RelayEngine(Engine):
             argv += ["--output", f"{b.speaker.position}:{b.sink.name}:{b.speaker.offset_ms:.3f}"]
         if cfg.stereo_split:
             argv.append("--stereo")
-        buffer = os.environ.get("SOUNDSCAPE_RELAY_BUFFER")
-        if buffer and buffer.isdigit():
-            argv += ["--buffer", buffer]
+        block = relay_block_size(cfg, len(bound))
+        argv += ["--buffer", str(block)]
+        self.log(f"relay block: {block} frames ({block / 48:.0f} ms at 48 kHz)")
         if cfg.pin_microphone:
             mic = cfg.microphone if cfg.microphone and cfg.microphone != "builtin" else self.audio.builtin_microphone()
             if mic:
